@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="60" cy="60" r="58" fill="#004499"/>
+  
+  <!-- ADM text -->
+  <text x="60" y="75" 
+        font-family="Arial, sans-serif" 
+        font-size="24" 
+        font-weight="900" 
+        text-anchor="middle" 
+        fill="#ffffff">
+    ADM
+  </text>
+  
+  <!-- Decorative elements -->
+  <circle cx="25" cy="25" r="3" fill="#ffffff" opacity="0.8"/>
+  <circle cx="95" cy="25" r="3" fill="#ffffff" opacity="0.8"/>
+  <circle cx="25" cy="95" r="3" fill="#ffffff" opacity="0.8"/>
+  <circle cx="95" cy="95" r="3" fill="#ffffff" opacity="0.8"/>
+  
+  <!-- Shield-like border -->
+  <circle cx="60" cy="60" r="55" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.3"/>
+</svg>

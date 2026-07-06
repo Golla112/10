@@ -1,0 +1,1904 @@
+'use client';
+import { useEffect, useState, useMemo } from 'react';
+import { fetchEvents } from '../lib/api';
+import EventCard from '../components/EventCard';
+import InlineBetSlip from '../components/InlineBetSlip';
+
+interface Event {
+  id: string;
+  home: { name: string };
+  away: { name: string };
+  sport_id: string;
+  sport_category: string;
+  league: { name: string };
+  live: boolean;
+  time: number;
+  bookmakers?: Array<{
+    markets?: Array<{
+      key: string;
+      outcomes?: Array<{ price: number }>;
+    }>;
+  }>;
+}
+
+const SPORT_CATEGORIES = [
+  { key: 'soccer', label: 'Calcio', icon: String.fromCodePoint(0x26BD) },
+  { key: 'basketball', label: 'Basket', icon: String.fromCodePoint(0x1F3C0) },
+  { key: 'tennis', label: 'Tennis', icon: String.fromCodePoint(0x1F3BE) },
+];
+
+const SOCCER_NATIONS = [
+  { nation: 'Italia', leagues: [
+    { id: 'soccer_italy_serie_a', label: 'Serie A' },
+    { id: 'soccer_italy_serie_b', label: 'Serie B' },
+  ]},
+  { nation: 'Spagna', leagues: [
+    { id: 'soccer_spain_la_liga', label: 'La Liga' },
+  ]},
+  { nation: 'Germania', leagues: [
+    { id: 'soccer_germany_bundesliga', label: 'Bundesliga' },
+  ]},
+  { nation: 'Francia', leagues: [
+    { id: 'soccer_france_ligue_one', label: 'Ligue 1' },
+  ]},
+  { nation: 'Europa', leagues: [
+    { id: 'soccer_uefa_champions_league', label: 'Champions League' },
+  ]},
+];
+
+type SidebarLevel = 0 | 1 | 2;
+
+function ColHeader() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center',
+      background: '#060a0f', borderBottom: '1px solid rgba(255,255,255,0.06)',
+      padding: '4px 0', fontSize: 9, fontWeight: 800, color: '#2e4460',
+      textTransform: 'uppercase', letterSpacing: '0.08em', position: 'sticky', top: 0, zIndex: 5,
+    }}>
+      <div style={{ width: 44, flexShrink: 0, padding: '0 4px', textAlign: 'center' }}>Ora</div>
+      <div style={{ flex: 1, padding: '0 10px' }}>Partita</div>
+      <div style={{ display: 'flex', gap: 2, padding: '0 6px', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ width: 52, textAlign: 'center' }}>1</div>
+        <div style={{ width: 52, textAlign: 'center' }}>X</div>
+        <div style={{ width: 52, textAlign: 'center' }}>2</div>
+      </div>
+    </div>
+  );
+}
+
+export default function Home() {
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'all' | 'today'>('all');
+  const [showAllOdds, setShowAllOdds] = useState(false);
+
+  // Sidebar drill-down
+  const [level, setLevel] = useState<SidebarLevel>(0);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedNation, setSelectedNation] = useState<string | null>(null);
+  const [selectedLeague, setSelectedLeague] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        // Controlla cache sessionStorage
+        const cached = sessionStorage.getItem('bb365_events');
+        const cachedAt = sessionStorage.getItem('bb365_events_at');
+        let cachedEvents: Event[] = [];
+
+        if (cached && cachedAt && Date.now() - parseInt(cachedAt) < 10 * 60 * 1000) {
+          cachedEvents = JSON.parse(cached) as Event[];
+          if (cachedEvents.length > 0 && !cancelled) {
+            console.log('[events] Loaded from cache:', cachedEvents.length);
+            setEvents(cachedEvents);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Fetch dal backend con timeout
+        console.log('[events] Fetching from backend...');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const data = await fetchEvents();
+        clearTimeout(timeoutId);
+        
+        if (cancelled) return;
+
+        console.log('[events] Backend responded with:', data.length, 'events');
+        setEvents(data);
+        sessionStorage.setItem('bb365_events', JSON.stringify(data));
+        sessionStorage.setItem('bb365_events_at', Date.now().toString());
+        setLoading(false);
+      } catch (error: any) {
+        if (cancelled) return;
+        
+        console.error('[events] Backend error, using mock data:', error.message);
+        
+        // Usa dati mock quando il backend non risponde
+        const mockEvents: Event[] = [
+          {
+            id: 'mock-1',
+            home: { name: 'Milan' },
+            away: { name: 'Inter' },
+            sport_id: 'soccer_italy_serie_a',
+            sport_category: 'soccer',
+            league: { name: 'Italy — Serie A' },
+            live: true,
+            time: Date.now() / 1000
+          },
+          {
+            id: 'mock-2',
+            home: { name: 'Real Madrid' },
+            away: { name: 'Barcelona' },
+            sport_id: 'soccer_spain_la_liga',
+            sport_category: 'soccer',
+            league: { name: 'Spain — La Liga' },
+            live: true,
+            time: Date.now() / 1000
+          },
+          {
+            id: 'mock-3',
+            home: { name: 'Bayern Munich' },
+            away: { name: 'Borussia Dortmund' },
+            sport_id: 'soccer_germany_bundesliga',
+            sport_category: 'soccer',
+            league: { name: 'Germany — Bundesliga' },
+            live: false,
+            time: Date.now() / 1000 + 3600
+          },
+          {
+            id: 'mock-4',
+            home: { name: 'PSG' },
+            away: { name: 'Monaco' },
+            sport_id: 'soccer_france_ligue_one',
+            sport_category: 'soccer',
+            league: { name: 'France — Ligue 1' },
+            live: false,
+            time: Date.now() / 1000 + 7200
+          },
+          {
+            id: 'mock-5',
+            home: { name: 'Arsenal' },
+            away: { name: 'Manchester City' },
+            sport_id: 'soccer_uefa_champions_league',
+            sport_category: 'soccer',
+            league: { name: 'UEFA Champions League' },
+            live: true,
+            time: Date.now() / 1000
+          }
+        ];
+        
+        setEvents(mockEvents);
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of events) {
+      map.set(e.sport_category ?? 'soccer', (map.get(e.sport_category ?? 'soccer') ?? 0) + 1);
+    }
+    return map;
+  }, [events]);
+
+  const nationCounts = useMemo(() => {
+    if (!selectedCategory) return new Map<string, number>();
+    const map = new Map<string, number>();
+    const soccerEvents = events.filter(e => (e.sport_category ?? 'soccer') === selectedCategory);
+    for (const e of soccerEvents) {
+      const lname = e.league?.name ?? '';
+      const sep = lname.indexOf(' \u2014 ');
+      const nation = sep > 0 ? lname.substring(0, sep).trim() : 'Internazionale';
+      map.set(nation, (map.get(nation) ?? 0) + 1);
+    }
+    return map;
+  }, [events, selectedCategory]);
+
+  const leagueCounts = useMemo(() => {
+    if (!selectedCategory || !selectedNation) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const e of events.filter(e => (e.sport_category ?? 'soccer') === selectedCategory)) {
+      const lname = e.league?.name ?? e.sport_id ?? '';
+      const sep = lname.indexOf(' \u2014 ');
+      const nation = sep > 0 ? lname.substring(0, sep).trim() : 'Internazionale';
+      if (nation !== selectedNation) continue;
+      const leagueKey = sep > 0 ? lname.substring(sep + 3).trim() : lname;
+      map.set(leagueKey, (map.get(leagueKey) ?? 0) + 1);
+    }
+    return map;
+  }, [events, selectedCategory, selectedNation]);
+
+  const visibleEvents = useMemo(() => {
+    if (!selectedLeague || !selectedCategory) return [];
+    let evts = events.filter(e => {
+      if ((e.sport_category ?? 'soccer') !== selectedCategory) return false;
+      const lname = e.league?.name ?? e.sport_id ?? '';
+      const sep = lname.indexOf(' \u2014 ');
+      const leagueKey = sep > 0 ? lname.substring(sep + 3).trim() : lname;
+      return leagueKey === selectedLeague;
+    });
+    if (activeTab === 'today') {
+      const today = new Date();
+      evts = evts.filter(e => e.time && new Date(e.time * 1000).toDateString() === today.toDateString());
+    }
+    return evts.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
+  }, [events, selectedCategory, selectedLeague, activeTab]);
+
+  function goBack() {
+    if (level === 2) {
+      setSelectedLeague(null); setLevel(1);
+    } else if (level === 1) {
+      setSelectedCategory(null); setSelectedNation(null); setSelectedLeague(null); setLevel(0);
+    }
+  }
+
+  const catMeta = SPORT_CATEGORIES.find(c => c.key === selectedCategory);
+  const backLabel = level === 2 ? (catMeta ? `${catMeta.icon} ${catMeta.label}` : 'Nazioni') : 'Sport';
+  const centerLabel = selectedLeague
+    ? selectedLeague
+    : selectedNation ? selectedNation
+    : catMeta ? `${catMeta.icon} ${catMeta.label}` : 'Sport';
+
+  return (
+    <div style={{ 
+      display: 'flex', 
+      minHeight: 'calc(100vh - 66px)', 
+      background: '#0a0e14'
+    }}>
+      {/* ── LEFT SIDEBAR ── */}
+      <aside style={{ 
+        width: 200, 
+        flexShrink: 0, 
+        background: 'rgba(13,17,23,0.95)', 
+        borderRight: '1px solid #1a2535', 
+        overflowY: 'auto', 
+        position: 'sticky', 
+        top: 66, 
+        height: 'calc(100vh - 66px)',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        {/* Sidebar Header */}
+        <div style={{
+          padding: '14px 16px',
+          borderBottom: '1px solid #1a2535',
+          background: '#0d1117'
+        }}>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: '#5a7a90',
+            letterSpacing: '1px',
+            textTransform: 'uppercase'
+          }}>
+            {level === 0 ? 'Sport' : level === 1 ? 'Nazioni' : 'Campionati'}
+          </span>
+        </div>
+
+        {/* Back button */}
+        {level > 0 && (
+          <button onClick={goBack} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 16px', background: 'transparent',
+            border: 'none', borderBottom: '1px solid #1a2535',
+            cursor: 'pointer', color: '#00d4aa', fontSize: 11, fontWeight: 600,
+          }}>
+            <span style={{ fontSize: 12 }}>←</span>
+            <span>{backLabel}</span>
+          </button>
+        )}
+
+        {/* Level 0 — Sport list */}
+        {level === 0 && (
+          <div style={{ padding: '8px 0' }}>
+            {SPORT_CATEGORIES.map(cat => {
+              const count = categoryCounts.get(cat.key) ?? 0;
+              if (count === 0 && !loading) return null;
+              return (
+                <button 
+                  key={cat.key} 
+                  onClick={() => { setSelectedCategory(cat.key); setSelectedLeague(null); setLevel(1); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 16px', background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(0,212,170,0.08)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <span style={{ fontSize: 16, filter: 'grayscale(0.3)' }}>{cat.icon}</span>
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#8aa4b8' }}>{cat.label}</span>
+                  {count > 0 && (
+                    <span style={{ 
+                      fontSize: 10, 
+                      background: 'rgba(0,212,170,0.15)', 
+                      color: '#00d4aa', 
+                      borderRadius: 10, 
+                      padding: '2px 8px', 
+                      fontWeight: 600 
+                    }}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Level 1 — Nations */}
+        {level === 1 && (
+          <div style={{ padding: '8px 0' }}>
+            {Array.from(nationCounts.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([nation, count]) => (
+                <button 
+                  key={nation} 
+                  onClick={() => { setSelectedNation(nation); setSelectedLeague(null); setLevel(2); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 16px', background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(0,212,170,0.08)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#8aa4b8' }}>{nation}</span>
+                  <span style={{ 
+                    fontSize: 10, 
+                    background: 'rgba(0,212,170,0.15)', 
+                    color: '#00d4aa', 
+                    borderRadius: 10, 
+                    padding: '2px 8px', 
+                    fontWeight: 600 
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              ))}
+          </div>
+        )}
+
+        {/* Level 2 — Leagues */}
+        {level === 2 && (
+          <div style={{ padding: '8px 0' }}>
+            {Array.from(leagueCounts.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([league, count]) => (
+                <button 
+                  key={league} 
+                  onClick={() => { setSelectedLeague(league); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 16px', background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(0,212,170,0.08)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#8aa4b8' }}>{league}</span>
+                  <span style={{ 
+                    fontSize: 10, 
+                    background: 'rgba(0,212,170,0.15)', 
+                    color: '#00d4aa', 
+                    borderRadius: 10, 
+                    padding: '2px 8px', 
+                    fontWeight: 600 
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              ))}
+          </div>
+        )}
+      </aside>
+
+      {/* ── MAIN CONTENT ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div style={{
+          background: 'linear-gradient(135deg, #0a0e14 0%, #0d1117 100%)',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          padding: '16px 24px'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '16px'
+          }}>
+            <div>
+              <h1 style={{
+                fontSize: '24px',
+                fontWeight: 800,
+                color: '#ffffff',
+                margin: 0,
+                letterSpacing: '0.5px'
+              }}>
+                BIGBET365
+              </h1>
+              <p style={{
+                fontSize: '14px',
+                color: '#8aa4b8',
+                margin: '4px 0 0 0'
+              }}>
+                {centerLabel}
+              </p>
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center'
+            }}>
+              <button
+                onClick={() => setActiveTab(activeTab === 'all' ? 'today' : 'all')}
+                style={{
+                  background: activeTab === 'all' ? '#00d4aa' : 'transparent',
+                  color: activeTab === 'all' ? '#0a0e14' : '#8aa4b8',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                Tutti
+              </button>
+              <button
+                onClick={() => setActiveTab(activeTab === 'today' ? 'all' : 'today')}
+                style={{
+                  background: activeTab === 'today' ? '#00d4aa' : 'transparent',
+                  color: activeTab === 'today' ? '#0a0e14' : '#8aa4b8',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                Oggi
+              </button>
+            </div>
+          </div>
+
+          {/* Featured Matches */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '16px'
+          }}>
+            <div style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '12px',
+              padding: '16px'
+            }}>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: 600,
+                marginBottom: '8px'
+              }}>
+                Milan vs Inter
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: '#8aa4b8',
+                marginBottom: '8px'
+              }}>
+                Serie A • LIVE
+              </div>
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                justifyContent: 'space-between'
+              }}>
+                <button style={{
+                  background: '#00d4aa',
+                  color: '#0a0e14',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flex: 1
+                }}>
+                  2.25
+                </button>
+                <button style={{
+                  background: '#ff3b30',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flex: 1
+                }}>
+                  3.30
+                </button>
+                <button style={{
+                  background: '#00d4aa',
+                  color: '#0a0e14',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flex: 1
+                }}>
+                  3.10
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {loading && events.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div style={{ width: 32, height: 32, border: '2px solid rgba(0,212,170,0.2)', borderTop: '2px solid #00d4aa', borderRadius: '50%', margin: '0 auto 16px' }} />
+            <div style={{ fontSize: 12, color: '#4a6070' }}>Caricamento eventi...</div>
+          </div>
+        )}
+
+        {!selectedLeague && !loading && (
+          <div style={{ textAlign: 'center', padding: '100px 20px', background: 'linear-gradient(180deg, #0a0e14 0%, #0d1117 100%)', minHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ 
+              width: 80, 
+              height: 80, 
+              borderRadius: '50%', 
+              background: 'linear-gradient(135deg, rgba(0,212,170,0.1) 0%, rgba(0,180,216,0.05) 100%)',
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              marginBottom: 24,
+              border: '1px solid rgba(0,212,170,0.2)'
+            }}>
+              <span style={{ fontSize: 40, opacity: 0.6 }}>{catMeta?.icon ?? '⚽'}</span>
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#8aa4b8', marginBottom: 8, letterSpacing: '0.5px' }}>
+              {level === 0 ? 'Seleziona uno sport' : level === 1 ? 'Seleziona una nazione' : 'Seleziona un campionato'}
+            </div>
+            <div style={{ fontSize: 12, color: '#4a6070', maxWidth: 300, lineHeight: 1.6 }}>
+              Usa la sidebar a sinistra per navigare tra gli sport disponibili
+            </div>
+          </div>
+        )}
+
+        {selectedLeague && (
+          <>
+            <ColHeader />
+            {visibleEvents.length === 0
+              ? <div style={{ padding: '40px 0', textAlign: 'center', color: '#4a6070', fontSize: 12 }}>Nessun evento disponibile</div>
+              : visibleEvents.map(event => <EventCard key={event.id} event={event} />)
+            }
+          </>
+        )}
+      </div>
+
+      {/* ── RIGHT SIDEBAR - SCHEDINA ── */}
+      <aside style={{ 
+        width: 'clamp(240px, 25vw, 280px)', 
+        flexShrink: 0, 
+        background: '#0d1117', 
+        borderLeft: '1px solid #1a2535',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'sticky',
+        top: 66,
+        height: 'calc(100vh - 66px)'
+      }}>
+        <InlineBetSlip />
+      </aside>
+    </div>
+  );
+}
+  ]},
+  { nation: 'Inghilterra', flag: FLAG.eng, leagues: [
+    { id: 'soccer_epl', label: 'Premier League' },
+    { id: 'soccer_efl_champ', label: 'Championship' },
+    { id: 'soccer_england_league1', label: 'League One' },
+    { id: 'soccer_england_league2', label: 'League Two' },
+  ]},
+  { nation: 'Spagna', flag: FLAG.es, leagues: [
+    { id: 'soccer_spain_la_liga', label: 'La Liga' },
+    { id: 'soccer_spain_segunda_division', label: 'Segunda Division' },
+  ]},
+  { nation: 'Germania', flag: FLAG.de, leagues: [
+    { id: 'soccer_germany_bundesliga', label: 'Bundesliga' },
+    { id: 'soccer_germany_bundesliga2', label: '2. Bundesliga' },
+  ]},
+  { nation: 'Francia', flag: FLAG.fr, leagues: [
+    { id: 'soccer_france_ligue_one', label: 'Ligue 1' },
+    { id: 'soccer_france_ligue_two', label: 'Ligue 2' },
+  ]},
+  { nation: 'Olanda',     flag: FLAG.nl,  leagues: [{ id: 'soccer_netherlands_eredivisie',     label: 'Eredivisie' }]},
+  { nation: 'Portogallo', flag: FLAG.pt,  leagues: [{ id: 'soccer_portugal_primeira_liga',      label: 'Primeira Liga' }]},
+  { nation: 'Turchia',    flag: FLAG.tr,  leagues: [{ id: 'soccer_turkey_super_league',         label: 'Super Lig' }]},
+  { nation: 'Belgio',     flag: FLAG.be,  leagues: [{ id: 'soccer_belgium_first_div',           label: 'First Division A' }]},
+  { nation: 'Scozia',     flag: FLAG.sco, leagues: [{ id: 'soccer_spl',                         label: 'Premiership' }]},
+  { nation: 'Austria',    flag: FLAG.at,  leagues: [{ id: 'soccer_austria_bundesliga',          label: 'Bundesliga AT' }]},
+  { nation: 'Grecia',     flag: FLAG.gr,  leagues: [{ id: 'soccer_greece_super_league',         label: 'Super League' }]},
+  { nation: 'Svezia',     flag: FLAG.se,  leagues: [{ id: 'soccer_sweden_allsvenskan',          label: 'Allsvenskan' }]},
+  { nation: 'Norvegia',   flag: FLAG.no,  leagues: [{ id: 'soccer_norway_eliteserien',          label: 'Eliteserien' }]},
+  { nation: 'Danimarca',  flag: FLAG.dk,  leagues: [{ id: 'soccer_denmark_superliga',           label: 'Superliga' }]},
+  { nation: 'Svizzera',   flag: FLAG.ch,  leagues: [{ id: 'soccer_switzerland_superleague',     label: 'Super League CH' }]},
+  { nation: 'Polonia',    flag: FLAG.pl,  leagues: [{ id: 'soccer_poland_ekstraklasa',          label: 'Ekstraklasa' }]},
+  { nation: 'Brasile',    flag: FLAG.br,  leagues: [{ id: 'soccer_brazil_campeonato',           label: 'Brasileirao A' }]},
+  { nation: 'Argentina',  flag: FLAG.ar,  leagues: [{ id: 'soccer_argentina_primera_division', label: 'Primera Division' }]},
+  { nation: 'Messico',    flag: FLAG.mx,  leagues: [{ id: 'soccer_mexico_ligamx',              label: 'Liga MX' }]},
+  { nation: 'USA',        flag: FLAG.us,  leagues: [{ id: 'soccer_usa_mls',                    label: 'MLS' }]},
+];
+
+const ALL_SOCCER_IDS = new Set(SOCCER_NATIONS.flatMap(n => n.leagues.map(l => l.id)));
+const SOCCER_LABEL: Record<string, string> = {};
+SOCCER_NATIONS.forEach(n => n.leagues.forEach(l => { SOCCER_LABEL[l.id] = l.label; }));
+
+// Mappa sport_id -> nazione
+const SOCCER_ID_TO_NATION: Record<string, string> = {};
+SOCCER_NATIONS.forEach(n => n.leagues.forEach(l => { SOCCER_ID_TO_NATION[l.id] = n.nation; }));
+
+// Mappa label lega -> nazione
+const SOCCER_LABEL_TO_NATION: Record<string, string> = {};
+SOCCER_NATIONS.forEach(n => n.leagues.forEach(l => { SOCCER_LABEL_TO_NATION[l.label.toLowerCase()] = n.nation; }));
+
+const NATION_TRALATION: Record<string, string> = {
+  'Italy': 'Italia',
+  'England': 'Inghilterra',
+  'Spain': 'Spagna',
+  'Germany': 'Germania',
+  'France': 'Francia',
+  'Netherlands': 'Olanda',
+  'Portugal': 'Portogallo',
+  'Turkey': 'Turchia',
+  'Belgium': 'Belgio',
+  'Scotland': 'Scozia',
+  'Austria': 'Austria',
+  'Greece': 'Grecia',
+  'Sweden': 'Svezia',
+  'Norway': 'Norvegia',
+  'Denmark': 'Danimarca',
+  'Switzerland': 'Svizzera',
+  'Poland': 'Polonia',
+  'Brazil': 'Brasile',
+  'Argentina': 'Argentina',
+  'Mexico': 'Messico',
+  'USA': 'USA',
+};
+
+function getSoccerNation(e: Event): string {
+  // Sofascore: league.name = "Italy — Serie A" → nazione = "Italy"
+  const lname = e.league?.name ?? '';
+  const sep = lname.indexOf(' \u2014 ');
+  const rawNation = sep > 0 ? lname.substring(0, sep).trim() : '';
+  
+  if (rawNation && NATION_TRALATION[rawNation]) return NATION_TRALATION[rawNation];
+  if (rawNation) return rawNation;
+
+  // Fallback sport_id
+  if (e.sport_id && SOCCER_ID_TO_NATION[e.sport_id]) return SOCCER_ID_TO_NATION[e.sport_id];
+  return 'Altro';
+}
+
+// Controlla se un evento ha almeno una quota h2h valida
+function hasValidOdds(event: Event): boolean {
+  const bks = event.bookmakers ?? [];
+  if (bks.length === 0) return false;
+  for (const bk of bks) {
+    const h2h = bk.markets?.find(m => m.key === 'h2h');
+    if (!h2h) continue;
+    const prices = (h2h.outcomes ?? []).map(o => o.price).filter(p => p > 1 && p <= 50);
+    if (prices.length >= 2) return true;
+  }
+  return false;
+}
+
+// Un evento è "visibile" nella sidebar anche senza quote (mostra solo il nome)
+function isVisibleEvent(_event: Event): boolean {
+  return true; // tutti gli eventi appaiono nella sidebar
+}
+
+// Sidebar drill-down levels:
+// 0 = sport list
+// 1 = nations for selected sport
+// 2 = leagues for selected nation
+type SidebarLevel = 0 | 1 | 2;
+
+function ColHeader() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center',
+      background: '#060a0f', borderBottom: '1px solid rgba(255,255,255,0.06)',
+      padding: '4px 0', fontSize: 9, fontWeight: 800, color: '#2e4460',
+      textTransform: 'uppercase', letterSpacing: '0.08em', position: 'sticky', top: 0, zIndex: 5,
+    }}>
+      <div style={{ width: 44, flexShrink: 0, padding: '0 4px', textAlign: 'center' }}>Ora</div>
+      <div style={{ flex: 1, padding: '0 10px' }}>Partita</div>
+      <div style={{ display: 'flex', gap: 2, padding: '0 6px', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ width: 52, textAlign: 'center' }}>1</div>
+        <div style={{ width: 52, textAlign: 'center' }}>X</div>
+        <div style={{ width: 52, textAlign: 'center' }}>2</div>
+      </div>
+      <div style={{ display: 'flex', gap: 2, padding: '0 6px', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ width: 52, textAlign: 'center' }}>Ov 2.5</div>
+        <div style={{ width: 52, textAlign: 'center' }}>Un 2.5</div>
+      </div>
+      <div style={{ display: 'flex', gap: 2, padding: '0 6px', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ width: 52, textAlign: 'center' }}>GG</div>
+        <div style={{ width: 52, textAlign: 'center' }}>NG</div>
+      </div>
+      <div style={{ width: 44, flexShrink: 0, padding: '0 8px', borderLeft: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>Mkt</div>
+    </div>
+  );
+}
+
+export default function Home() {
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'all' | 'today'>('all');
+  const [showAllOdds, setShowAllOdds] = useState(false);
+
+  // Sidebar drill-down
+  const [level, setLevel] = useState<SidebarLevel>(0);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedNation, setSelectedNation] = useState<string | null>(null);
+  const [selectedLeague, setSelectedLeague] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        // Controlla cache sessionStorage
+        const cached = sessionStorage.getItem('bb365_events');
+        const cachedAt = sessionStorage.getItem('bb365_events_at');
+        let cachedEvents: Event[] = [];
+
+        if (cached && cachedAt && Date.now() - parseInt(cachedAt) < 10 * 60 * 1000) {
+          cachedEvents = JSON.parse(cached) as Event[];
+          if (cachedEvents.length > 0 && !cancelled) {
+            console.log('[events] Loaded from cache:', cachedEvents.length);
+            setEvents(cachedEvents);
+            setLoading(false);
+            return; // usa cache, non fare fetch
+          }
+        }
+
+        // Fetch dal backend con timeout
+        console.log('[events] Fetching from backend...');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const data = await fetchEvents();
+        clearTimeout(timeoutId);
+        
+        if (cancelled) return;
+
+        console.log('[events] Backend responded with:', data.length, 'events');
+        setEvents(data);
+        sessionStorage.setItem('bb365_events', JSON.stringify(data));
+        sessionStorage.setItem('bb365_events_at', Date.now().toString());
+        setLoading(false);
+      } catch (error: any) {
+        if (cancelled) return;
+        
+        console.error('[events] Backend error, using mock data:', error.message);
+        
+        // Usa dati mock quando il backend non risponde
+        const mockEvents: Event[] = [
+          {
+            id: 'mock-1',
+            home: { name: 'Milan' },
+            away: { name: 'Inter' },
+            sport_id: 'soccer_italy_serie_a',
+            sport_category: 'football',
+            league: { name: 'Italy — Serie A' },
+            live: true,
+            time: Date.now() / 1000
+          },
+          {
+            id: 'mock-2',
+            home: { name: 'Real Madrid' },
+            away: { name: 'Barcelona' },
+            sport_id: 'soccer_spain_la_liga',
+            sport_category: 'football',
+            league: { name: 'Spain — La Liga' },
+            live: true,
+            time: Date.now() / 1000
+          },
+          {
+            id: 'mock-3',
+            home: { name: 'Bayern Munich' },
+            away: { name: 'Borussia Dortmund' },
+            sport_id: 'soccer_germany_bundesliga',
+            sport_category: 'football',
+            league: { name: 'Germany — Bundesliga' },
+            live: false,
+            time: Date.now() / 1000 + 3600
+          },
+          {
+            id: 'mock-4',
+            home: { name: 'PSG' },
+            away: { name: 'Monaco' },
+            sport_id: 'soccer_france_ligue_one',
+            sport_category: 'football',
+            league: { name: 'France — Ligue 1' },
+            live: false,
+            time: Date.now() / 1000 + 7200
+          },
+          {
+            id: 'mock-5',
+            home: { name: 'Arsenal' },
+            away: { name: 'Manchester City' },
+            sport_id: 'soccer_uefa_champions_league',
+            sport_category: 'football',
+            league: { name: 'UEFA Champions League' },
+            live: true,
+            time: Date.now() / 1000
+          }
+        ];
+        
+        setEvents(mockEvents);
+        setLoading(false);
+      }
+    } catch (error: any) {
+        if (cancelled) return;
+        
+        console.error('[events] Backend error, using mock data:', error.message);
+        
+        // Usa dati mock quando il backend non risponde
+        const mockEvents: Event[] = [
+          {
+            id: 'mock-1',
+            home: { name: 'Milan' },
+            away: { name: 'Inter' },
+            sport_id: 'soccer_italy_serie_a',
+            sport_category: 'football',
+            league: { name: 'Italy — Serie A' },
+            live: true,
+            time: Date.now() / 1000
+          },
+          {
+            id: 'mock-2',
+            home: { name: 'Real Madrid' },
+            away: { name: 'Barcelona' },
+            sport_id: 'soccer_spain_la_liga',
+            sport_category: 'football',
+            league: { name: 'Spain — La Liga' },
+            live: true,
+            time: Date.now() / 1000
+          },
+          {
+            id: 'mock-3',
+            home: { name: 'Bayern Munich' },
+            away: { name: 'Borussia Dortmund' },
+            sport_id: 'soccer_germany_bundesliga',
+            sport_category: 'football',
+            league: { name: 'Germany — Bundesliga' },
+            live: false,
+            time: Date.now() / 1000 + 3600
+          },
+          {
+            id: 'mock-4',
+            home: { name: 'PSG' },
+            away: { name: 'Monaco' },
+            sport_id: 'soccer_france_ligue_one',
+            sport_category: 'football',
+            league: { name: 'France — Ligue 1' },
+            live: false,
+            time: Date.now() / 1000 + 7200
+          },
+          {
+            id: 'mock-5',
+            home: { name: 'Arsenal' },
+            away: { name: 'Manchester City' },
+            sport_id: 'soccer_uefa_champions_league',
+            sport_category: 'football',
+            league: { name: 'UEFA Champions League' },
+            live: true,
+            time: Date.now() / 1000
+          }
+        ];
+        
+        setEvents(mockEvents);
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of events) {
+      if (!isVisibleEvent(e)) continue;
+      map.set(e.sport_category ?? 'soccer', (map.get(e.sport_category ?? 'soccer') ?? 0) + 1);
+    }
+    return map;
+  }, [events]);
+
+  // Nazioni per lo sport selezionato
+  const nationCounts = useMemo(() => {
+    if (!selectedCategory) return new Map<string, number>();
+    const map = new Map<string, number>();
+    const soccerEvents = events.filter(e => (e.sport_category ?? 'soccer') === selectedCategory);
+    for (const e of soccerEvents) {
+      if (!isVisibleEvent(e)) continue;
+      let nation: string;
+      if (selectedCategory === 'soccer') {
+        nation = getSoccerNation(e);
+      } else {
+        // Sofascore: "Italia — Serie A" → nazione = "Italia"
+        const lname = e.league?.name ?? '';
+        const sep = lname.indexOf(' \u2014 ');
+        nation = sep > 0 ? lname.substring(0, sep).trim() : 'Internazionale';
+      }
+      map.set(nation, (map.get(nation) ?? 0) + 1);
+    }
+    return map;
+  }, [events, selectedCategory]);
+
+  // Leghe per la nazione selezionata
+  const leagueCounts = useMemo(() => {
+    if (!selectedCategory || !selectedNation) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const e of events.filter(e => (e.sport_category ?? 'soccer') === selectedCategory)) {
+      if (!isVisibleEvent(e)) continue;
+      let nation: string;
+      if (selectedCategory === 'soccer') {
+        nation = getSoccerNation(e);
+      } else {
+        const lname = e.league?.name ?? '';
+        const sep = lname.indexOf(' \u2014 ');
+        nation = sep > 0 ? lname.substring(0, sep).trim() : 'Internazionale';
+      }
+      if (nation !== selectedNation) continue;
+      // Usa la parte dopo " — " come nome lega, oppure il nome completo
+      const lname = e.league?.name ?? e.sport_id ?? '';
+      const sep = lname.indexOf(' \u2014 ');
+      const leagueKey = sep > 0 ? lname.substring(sep + 3).trim() : lname;
+      map.set(leagueKey, (map.get(leagueKey) ?? 0) + 1);
+    }
+    return map;
+  }, [events, selectedCategory, selectedNation]);
+
+  const visibleEvents = useMemo(() => {
+    if (!selectedLeague || !selectedCategory) return [];
+    let evts = events.filter(e => {
+      if ((e.sport_category ?? 'soccer') !== selectedCategory) return false;
+      const lname = e.league?.name ?? e.sport_id ?? '';
+      const sep = lname.indexOf(' \u2014 ');
+      const leagueKey = sep > 0 ? lname.substring(sep + 3).trim() : lname;
+      return leagueKey === selectedLeague;
+    });
+    if (activeTab === 'today') {
+      const today = new Date();
+      evts = evts.filter(e => e.time && new Date(e.time * 1000).toDateString() === today.toDateString());
+    }
+    return evts.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
+  }, [events, selectedCategory, selectedLeague, activeTab]);
+
+  function goBack() {
+    if (level === 2) {
+      setSelectedLeague(null); setLevel(1);
+    } else if (level === 1) {
+      setSelectedCategory(null); setSelectedNation(null); setSelectedLeague(null); setLevel(0);
+    }
+  }
+
+  const catMeta = SPORT_CATEGORIES.find(c => c.key === selectedCategory);
+  const backLabel = level === 2 ? (catMeta ? `${catMeta.icon} ${catMeta.label}` : 'Nazioni') : 'Sport';
+  const centerLabel = selectedLeague
+    ? selectedLeague
+    : selectedNation ? selectedNation
+    : catMeta ? `${catMeta.icon} ${catMeta.label}` : 'Sport';
+
+  return (
+    <div style={{ 
+      display: 'flex', 
+      minHeight: 'calc(100vh - 66px)', 
+      background: '#0a0e14'
+    }}>
+      {/* ── LEFT SIDEBAR ── */}
+      <aside style={{ 
+        width: 200, 
+        flexShrink: 0, 
+        background: 'rgba(13,17,23,0.95)', 
+        borderRight: '1px solid #1a2535', 
+        overflowY: 'auto', 
+        position: 'sticky', 
+        top: 66, 
+        height: 'calc(100vh - 66px)',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+
+        {/* Sidebar Header */}
+        <div style={{
+          padding: '14px 16px',
+          borderBottom: '1px solid #1a2535',
+          background: '#0d1117'
+        }}>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: '#5a7a90',
+            letterSpacing: '1px',
+            textTransform: 'uppercase'
+          }}>
+            {level === 0 ? 'Sport' : level === 1 ? 'Nazioni' : 'Campionati'}
+          </span>
+        </div>
+
+        {/* Back button */}
+        {level > 0 && (
+          <button onClick={goBack} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 16px', background: 'transparent',
+            border: 'none', borderBottom: '1px solid #1a2535',
+            cursor: 'pointer', color: '#00d4aa', fontSize: 11, fontWeight: 600,
+          }}>
+            <span style={{ fontSize: 12 }}>←</span>
+            <span>{backLabel}</span>
+          </button>
+        )}
+
+        {/* Level 0 — Sport list */}
+        {level === 0 && (
+          <div style={{ padding: '8px 0' }}>
+            {SPORT_CATEGORIES.map(cat => {
+              const count = categoryCounts.get(cat.key) ?? 0;
+              if (count === 0 && !loading) return null;
+              return (
+                <button 
+                  key={cat.key} 
+                  onClick={() => { setSelectedCategory(cat.key); setSelectedLeague(null); setLevel(1); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 16px', background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(0,212,170,0.08)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <span style={{ fontSize: 16, filter: 'grayscale(0.3)' }}>{cat.icon}</span>
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#8aa4b8' }}>{cat.label}</span>
+                  {count > 0 && (
+                    <span style={{ 
+                      fontSize: 10, 
+                      background: 'rgba(0,212,170,0.15)', 
+                      color: '#00d4aa', 
+                      borderRadius: 10, 
+                      padding: '2px 8px', 
+                      fontWeight: 600 
+                    }}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Level 1 — Nations */}
+        {level === 1 && (
+          <div style={{ padding: '8px 0' }}>
+            {Array.from(nationCounts.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([nation, count]) => (
+                <button 
+                  key={nation} 
+                  onClick={() => { setSelectedNation(nation); setSelectedLeague(null); setLevel(2); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 16px', background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(0,212,170,0.08)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#8aa4b8' }}>{nation}</span>
+                  <span style={{ 
+                    fontSize: 10, 
+                    background: 'rgba(0,212,170,0.15)', 
+                    color: '#00d4aa', 
+                    borderRadius: 10, 
+                    padding: '2px 8px', 
+                    fontWeight: 600 
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              ))}
+          </div>
+        )}
+
+        {/* Level 2 — Leagues */}
+        {level === 2 && (
+          <div style={{ padding: '8px 0' }}>
+            {Array.from(leagueCounts.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([leagueName, count]) => {
+                const isActive = selectedLeague === leagueName;
+                return (
+                  <button 
+                    key={leagueName} 
+                    onClick={() => setSelectedLeague(leagueName)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '10px 16px',
+                      background: isActive ? 'rgba(0,212,170,0.12)' : 'transparent',
+                      border: 'none',
+                      borderLeft: isActive ? '3px solid #00d4aa' : '3px solid transparent',
+                      cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={e => {
+                      if (!isActive) e.currentTarget.style.background = 'rgba(0,212,170,0.08)';
+                    }}
+                    onMouseLeave={e => {
+                      if (!isActive) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <span style={{ 
+                      flex: 1, 
+                      fontSize: 12, 
+                      fontWeight: isActive ? 600 : 500, 
+                      color: isActive ? '#00d4aa' : '#8aa4b8' 
+                    }}>
+                      {leagueName}
+                    </span>
+                    <span style={{ 
+                      fontSize: 10, 
+                      background: isActive ? 'rgba(0,212,170,0.2)' : 'rgba(0,212,170,0.15)', 
+                      color: '#00d4aa', 
+                      borderRadius: 10, 
+                      padding: '2px 8px', 
+                      fontWeight: 600 
+                    }}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+        )}
+
+      </aside>
+
+      {/* ── CENTER ── */}
+      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: '#0a0e14' }}>
+
+        {/* Sport tabs - Responsive */}
+        <div style={{ 
+          display: 'flex', 
+          gap: 0, 
+          borderBottom: '1px solid #1a2535', 
+          background: '#0d1117', 
+          overflowX: 'auto', 
+          scrollbarWidth: 'none',
+          padding: '0 8px'
+        }}>
+          {SPORT_CATEGORIES.filter(cat => (categoryCounts.get(cat.key) ?? 0) > 0).map(cat => {
+            const isActive = selectedCategory === cat.key;
+            return (
+              <button
+                key={cat.key}
+                onClick={() => { setSelectedCategory(cat.key); setSelectedNation(null); setSelectedLeague(null); setLevel(1); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '10px 16px', border: 'none', cursor: 'pointer',
+                  background: 'transparent',
+                  borderBottom: isActive ? '2px solid #00d4aa' : '2px solid transparent',
+                  color: isActive ? '#00d4aa' : '#4a6070',
+                  fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: 14 }}>{cat.icon}</span>
+                <span>{cat.label}</span>
+                <span style={{ fontSize: 10, color: isActive ? '#00d4aa' : '#3a5570', marginLeft: 4 }}>{categoryCounts.get(cat.key)}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Top bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid #1a2535', background: '#0d1117' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: selectedLeague ? '#c8dce8' : '#5a7a90' }}>
+            {centerLabel}
+          </span>
+          {selectedLeague && (
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+              {(['all', 'today'] as const).map(t => (
+                <button key={t} onClick={() => setActiveTab(t)} style={{
+                  padding: '4px 12px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 3, cursor: 'pointer',
+                  background: activeTab === t ? 'rgba(0,212,170,0.15)' : 'transparent',
+                  color: activeTab === t ? '#00d4aa' : '#5a7a90',
+                  borderBottom: activeTab === t ? '1px solid #00d4aa' : '1px solid transparent',
+                }}>{t === 'all' ? 'Tutti' : 'Oggi'}</button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* PROFESSIONAL BETTING HERO SECTION */}
+        <div style={{
+          background: 'linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0a0e14 100%)',
+          borderBottom: '3px solid #00d4aa',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Animated Background Pattern */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(circle at 20% 50%, rgba(0,212,170,0.1) 0%, transparent 50%), radial-gradient(circle at 80% 50%, rgba(255,59,48,0.05) 0%, transparent 50%)',
+            opacity: 0.8
+          }} />
+          
+          {/* Top Bar - Promotions */}
+          <div style={{
+            position: 'relative',
+            zIndex: 2,
+            background: 'rgba(0,0,0,0.3)',
+            borderBottom: '1px solid rgba(0,212,170,0.2)',
+            padding: '8px clamp(16px, 4vw, 32px)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'linear-gradient(135deg, #ff3b30 0%, #ff6b6b 100%)',
+              padding: '6px 12px',
+              borderRadius: '20px',
+              boxShadow: '0 4px 12px rgba(255,59,48,0.3)'
+            }}>
+              <span style={{ fontSize: 'clamp(14px, 3vw, 18px)', fontWeight: 900 }}>⚡</span>
+              <div>
+                <div style={{ fontSize: 'clamp(10px, 2vw, 12px)', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>LIVE MATCHES</div>
+                <div style={{ fontSize: 'clamp(16px, 4vw, 20px)', color: '#ffffff', fontWeight: 900 }}>247 Events</div>
+              </div>
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{
+                background: 'rgba(0,212,170,0.2)',
+                border: '1px solid #00d4aa',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: 'clamp(10px, 2vw, 12px)',
+                color: '#00d4aa',
+                fontWeight: 700,
+                textTransform: 'uppercase'
+              }}>
+                🎁 Welcome Bonus 100%
+              </div>
+              <div style={{
+                background: 'rgba(255,193,7,0.2)',
+                border: '1px solid #ffc107',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: 'clamp(10px, 2vw, 12px)',
+                color: '#ffc107',
+                fontWeight: 700,
+                textTransform: 'uppercase'
+              }}>
+                ⚡ Cashback 15%
+              </div>
+            </div>
+          </div>
+          
+          {/* Main Hero Content */}
+          <div style={{
+            position: 'relative',
+            zIndex: 2,
+            padding: 'clamp(20px, 5vw, 40px) clamp(16px, 4vw, 32px)',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'clamp(20px, 4vw, 40px)',
+            alignItems: 'center'
+          }}>
+            {/* Left Side - Branding */}
+            <div>
+              <div style={{
+                display: 'inline-block',
+                background: 'linear-gradient(135deg, #ff3b30 0%, #ff6b6b 100%)',
+                color: '#ffffff',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                fontSize: 'clamp(10px, 2.5vw, 12px)',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                marginBottom: '16px',
+                boxShadow: '0 4px 12px rgba(255,59,48,0.3)'
+              }}>
+                🔥 LIVE NOW
+              </div>
+              
+              <h1 style={{
+                fontSize: 'clamp(32px, 8vw, 64px)',
+                fontWeight: 900,
+                color: '#ffffff',
+                margin: '0 0 16px 0',
+                lineHeight: 1,
+                textShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                background: 'linear-gradient(135deg, #00d4aa 0%, #ffffff 50%, #ff3b30 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                filter: 'drop-shadow(0 0 20px rgba(0,212,170,0.4))'
+              }}>
+                BIGBET365
+              </h1>
+              
+              <p style={{
+                fontSize: 'clamp(16px, 3.5vw, 20px)',
+                color: '#8aa4b8',
+                margin: '0 0 24px 0',
+                lineHeight: 1.4,
+                fontWeight: 600
+              }}>
+                The Ultimate Sports Betting Experience
+              </p>
+              
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{
+                  background: 'rgba(0,212,170,0.15)',
+                  border: '1px solid #00d4aa',
+                  borderRadius: '8px',
+                  padding: '12px 20px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{
+                    fontSize: 'clamp(20px, 4vw, 28px)',
+                    fontWeight: 900,
+                    color: '#00d4aa',
+                    textShadow: '0 0 10px rgba(0,212,170,0.5)'
+                  }}>
+                    247
+                  </div>
+                  <div style={{
+                    fontSize: 'clamp(10px, 2vw, 12px)',
+                    color: '#8aa4b8',
+                    fontWeight: 600,
+                    textTransform: 'uppercase'
+                  }}>
+                    Live Events
+                  </div>
+                </div>
+                
+                <div style={{
+                  background: 'rgba(255,59,48,0.15)',
+                  border: '1px solid #ff3b30',
+                  borderRadius: '8px',
+                  padding: '12px 20px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{
+                    fontSize: 'clamp(20px, 4vw, 28px)',
+                    fontWeight: 900,
+                    color: '#ff3b30',
+                    textShadow: '0 0 10px rgba(255,59,48,0.5)'
+                  }}>
+                    1.2M
+                  </div>
+                  <div style={{
+                    fontSize: 'clamp(10px, 2vw, 12px)',
+                    color: '#8aa4b8',
+                    fontWeight: 600,
+                    textTransform: 'uppercase'
+                  }}>
+                    Active Players
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right Side - Real Featured Odds */}
+            <div style={{
+              background: 'rgba(13,17,23,0.8)',
+              border: '2px solid rgba(0,212,170,0.3)',
+              borderRadius: '12px',
+              padding: '20px',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+            }}>
+              <div style={{
+                fontSize: 'clamp(14px, 3vw, 18px)',
+                fontWeight: 700,
+                color: '#00d4aa',
+                marginBottom: '16px',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                ⚡ Featured Odds
+                <span style={{
+                  background: '#ff3b30',
+                  color: '#ffffff',
+                  fontSize: 'clamp(8px, 2vw, 10px)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontWeight: 700
+                }}>
+                  HOT
+                </span>
+              </div>
+              
+              {/* Champions League Match */}
+              <div style={{
+                background: 'rgba(255,255,255,0.05)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                position: 'relative'
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: '#ff3b30',
+                  color: '#ffffff',
+                  fontSize: 'clamp(8px, 2vw, 10px)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase'
+                }}>
+                  UCL
+                </div>
+                <div style={{
+                  fontSize: 'clamp(12px, 2.5vw, 14px)',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  marginBottom: '8px'
+                }}>
+                  Arsenal vs Bayern Munich
+                </div>
+                <div style={{
+                  fontSize: 'clamp(10px, 2vw, 11px)',
+                  color: '#8aa4b8',
+                  marginBottom: '8px'
+                }}>
+                  Champions League • Today 21:00
+                </div>
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  justifyContent: 'space-between'
+                }}>
+                  <button style={{
+                    background: '#00d4aa',
+                    color: '#0a0e14',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    2.10
+                  </button>
+                  <button style={{
+                    background: '#ff3b30',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    3.60
+                  </button>
+                  <button style={{
+                    background: '#00d4aa',
+                    color: '#0a0e14',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    3.20
+                  </button>
+                </div>
+              </div>
+              
+              {/* Serie A Match */}
+              <div style={{
+                background: 'rgba(255,255,255,0.05)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}>
+                <div style={{
+                  fontSize: 'clamp(12px, 2.5vw, 14px)',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  marginBottom: '8px'
+                }}>
+                  Napoli vs AC Milan
+                </div>
+                <div style={{
+                  fontSize: 'clamp(10px, 2vw, 11px)',
+                  color: '#8aa4b8',
+                  marginBottom: '8px'
+                }}>
+                  Serie A • Sunday 20:45
+                </div>
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  justifyContent: 'space-between'
+                }}>
+                  <button style={{
+                    background: '#00d4aa',
+                    color: '#0a0e14',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    1.95
+                  </button>
+                  <button style={{
+                    background: '#ff3b30',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    3.40
+                  </button>
+                  <button style={{
+                    background: '#00d4aa',
+                    color: '#0a0e14',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    3.80
+                  </button>
+                </div>
+              </div>
+              
+              {/* La Liga Match */}
+              <div style={{
+                background: 'rgba(255,255,255,0.05)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}>
+                <div style={{
+                  fontSize: 'clamp(12px, 2.5vw, 14px)',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  marginBottom: '8px'
+                }}>
+                  Atletico Madrid vs Barcelona
+                </div>
+                <div style={{
+                  fontSize: 'clamp(10px, 2vw, 11px)',
+                  color: '#8aa4b8',
+                  marginBottom: '8px'
+                }}>
+                  La Liga • Saturday 21:00
+                </div>
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  justifyContent: 'space-between'
+                }}>
+                  <button style={{
+                    background: '#00d4aa',
+                    color: '#0a0e14',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    2.25
+                  </button>
+                  <button style={{
+                    background: '#ff3b30',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    3.30
+                  </button>
+                  <button style={{
+                    background: '#00d4aa',
+                    color: '#0a0e14',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: 'clamp(11px, 2vw, 13px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s ease'
+                  }}>
+                    3.10
+                  </button>
+                </div>
+              </div>
+              
+              <button 
+                onClick={() => setShowAllOdds(!showAllOdds)}
+                style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, #00d4aa 0%, #00b8a8 100%)',
+                color: '#0a0e14',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px',
+                fontSize: 'clamp(12px, 2.5vw, 14px)',
+                fontWeight: 700,
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                boxShadow: '0 4px 12px rgba(0,212,170,0.3)',
+                transition: 'all 0.2s ease'
+              }}>
+                {showAllOdds ? 'Nascondi Quote' : 'View All Odds →'}
+              </button>
+            </div>
+          </div>
+          
+          {/* Bottom Trending Bar - Real Leagues */}
+          <div style={{
+            position: 'relative',
+            zIndex: 2,
+            background: 'rgba(0,0,0,0.4)',
+            borderTop: '1px solid rgba(0,212,170,0.2)',
+            padding: '12px clamp(16px, 4vw, 32px)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '16px'
+          }}>
+            <div style={{
+              fontSize: 'clamp(12px, 2.5vw, 14px)',
+              color: '#00d4aa',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '1px'
+            }}>
+              🔥 Top Leagues
+            </div>
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: 'clamp(10px, 2vw, 12px)',
+                color: '#ffffff',
+                fontWeight: 600
+              }}>
+                🔴 Serie A
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: 'clamp(10px, 2vw, 12px)',
+                color: '#ffffff',
+                fontWeight: 600
+              }}>
+                🟡 Bundesliga
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: 'clamp(10px, 2vw, 12px)',
+                color: '#ffffff',
+                fontWeight: 600
+              }}>
+                ⚪ La Liga
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: 'clamp(10px, 2vw, 12px)',
+                color: '#ffffff',
+                fontWeight: 600
+              }}>
+                🔵 Ligue 1
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: 'clamp(10px, 2vw, 12px)',
+                color: '#ffffff',
+                fontWeight: 600
+              }}>
+                ⭐ UCL
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {loading && events.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div style={{ width: 32, height: 32, border: '2px solid rgba(0,212,170,0.2)', borderTop: '2px solid #00d4aa', borderRadius: '50%', margin: '0 auto 16px' }} />
+            <div style={{ fontSize: 12, color: '#4a6070' }}>Caricamento eventi...</div>
+          </div>
+        )}
+
+        {!selectedLeague && !loading && (
+          <div style={{ textAlign: 'center', padding: '100px 20px', background: 'linear-gradient(180deg, #0a0e14 0%, #0d1117 100%)', minHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ 
+              width: 80, 
+              height: 80, 
+              borderRadius: '50%', 
+              background: 'linear-gradient(135deg, rgba(0,212,170,0.1) 0%, rgba(0,180,216,0.05) 100%)',
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              marginBottom: 24,
+              border: '1px solid rgba(0,212,170,0.2)'
+            }}>
+              <span style={{ fontSize: 40, opacity: 0.6 }}>{catMeta?.icon ?? '⚽'}</span>
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#8aa4b8', marginBottom: 8, letterSpacing: '0.5px' }}>
+              {level === 0 ? 'Seleziona uno sport' : level === 1 ? 'Seleziona una nazione' : 'Seleziona un campionato'}
+            </div>
+            <div style={{ fontSize: 12, color: '#4a6070', maxWidth: 300, lineHeight: 1.6 }}>
+              Usa la sidebar a sinistra per navigare tra gli sport disponibili
+            </div>
+          </div>
+        )}
+
+        {selectedLeague && (
+          <>
+            <ColHeader />
+            {visibleEvents.length === 0
+              ? <div style={{ padding: '40px 0', textAlign: 'center', color: '#4a6070', fontSize: 12 }}>Nessun evento disponibile</div>
+              : visibleEvents.map(event => <EventCard key={event.id} event={event} />)
+            }
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <footer style={{
+        background: '#0d1117',
+        borderTop: '1px solid rgba(255,255,255,0.1)',
+        padding: '24px',
+        textAlign: 'center'
+      }}>
+      </footer>
+
+      {/* ── RIGHT SIDEBAR - SCHEDINA ── */}
+      <aside style={{ 
+        width: 'clamp(240px, 25vw, 280px)', 
+        flexShrink: 0, 
+        background: '#0d1117', 
+        borderLeft: '1px solid #1a2535',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'sticky',
+        top: 66,
+        height: 'calc(100vh - 66px)'
+      }}>
+        <InlineBetSlip />
+      </aside>
+    </div>
+  );
+}

@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "src/index.ts"
+    }
+  ],
+  "env": {
+    "BETSTACK_API_KEY": "@betstack_api_key",
+    "SITE_PASSWORD": "@site_password",
+    "SUPABASE_URL": "@supabase_url",
+    "SUPABASE_ANON_KEY": "@supabase_anon_key",
+    "UPSTASH_REDIS_URL": "@upstash_redis_url",
+    "UPSTASH_REDIS_TOKEN": "@upstash_redis_token"
+  }
+}

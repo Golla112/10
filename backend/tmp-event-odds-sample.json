@@ -1,0 +1,169 @@
+{
+  "markets": [
+    {
+      "key": "1_1x2",
+      "name": "1X2",
+      "id_group": 1,
+      "group_code": "Principali",
+      "is_principal": 1,
+      "order": 10,
+      "template": "",
+      "odds": [
+        {
+          "key": "1_1x2:1",
+          "name": 1,
+          "order_odd": 1
+        },
+        {
+          "key": "1_1x2:Draw",
+          "name": "X",
+          "order_odd": 2
+        },
+        {
+          "key": "1_1x2:2",
+          "name": 2,
+          "order_odd": 3
+        }
+      ]
+    },
+    {
+      "key": "1_dc",
+      "name": "DC",
+      "id_group": 1,
+      "group_code": "Principali",
+      "is_principal": 1,
+      "order": 20,
+      "template": "",
+      "odds": [
+        {
+          "key": "1_dc:1X",
+          "name": "1X",
+          "order_odd": 1
+        },
+        {
+          "key": "1_dc:12",
+          "name": 12,
+          "order_odd": 2
+        },
+        {
+          "key": "1_dc:X2",
+          "name": "X2",
+          "order_odd": 3
+        }
+      ]
+    },
+    {
+      "key": "1_ggng",
+      "name": "GG/NG\t",
+      "id_group": 1,
+      "group_code": "Principali",
+      "is_principal": 1,
+      "order": 30,
+      "template": "",
+      "odds": [
+        {
+          "key": "1_ggng:Yes",
+          "name": "GG",
+          "order_odd": 1
+        },
+        {
+          "key": "1_ggng:No",
+          "name": "NG",
+          "order_odd": 2
+        }
+      ]
+    }
+  ],
+  "oddsSample": {
+    "1_1x2:1": {
+      "key": "1_1x2:1",
+      "name": 1,
+      "valore": 18.07,
+      "order": 10,
+      "order_odd": 1,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_1x2:Draw": {
+      "key": "1_1x2:Draw",
+      "name": "X",
+      "valore": 10.46,
+      "order": 10,
+      "order_odd": 2,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_1x2:2": {
+      "key": "1_1x2:2",
+      "name": 2,
+      "valore": 1.03,
+      "order": 10,
+      "order_odd": 3,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_dc:1X": {
+      "key": "1_dc:1X",
+      "name": "1X",
+      "valore": 5.55,
+      "order": 20,
+      "order_odd": 1,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_dc:12": {
+      "key": "1_dc:12",
+      "name": 12,
+      "valore": 1.02,
+      "order": 20,
+      "order_odd": 2,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_dc:X2": {
+      "key": "1_dc:X2",
+      "name": "X2",
+      "valore": 0.97,
+      "order": 20,
+      "order_odd": 3,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_ggng:Yes": {
+      "key": "1_ggng:Yes",
+      "name": "GG",
+      "valore": 1.78,
+      "order": 30,
+      "order_odd": 1,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_ggng:No": {
+      "key": "1_ggng:No",
+      "name": "NG",
+      "valore": 1.63,
+      "order": 30,
+      "order_odd": 2,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_uo:Under_0_5": {
+      "key": "1_uo:Under_0_5",
+      "name": "Under 0.5",
+      "valore": 21.4,
+      "order": 40,
+      "order_odd": 10,
+      "champ_play": 3,
+      "molteplicity": 3
+    },
+    "1_uo:Under_1_5": {
+      "key": "1_uo:Under_1_5",
+      "name": "Under 1.5",
+      "valore": 8.71,
+      "order": 40,
+      "order_odd": 30,
+      "champ_play": 3,
+      "molteplicity": 3
+    }
+  }
+}
