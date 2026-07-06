@@ -471,71 +471,199 @@ function buildPrematchMarkets(
   const active = odds.filter((o) => o.enabled === 1 && o.rank > 1);
   console.log(`[sibet90] buildMarkets: ${odds.length} quote totali, ${active.length} attive`);
   const markets: OddsApiMarket[] = [];
+  const addedGroupKeys = new Set<string>();
 
-  // 1X2 - try multiple group names
-  const oneX2 = active.filter((o) => 
-    o.oddGroup?.toUpperCase() === '1X2' || 
-    o.oddGroup?.toUpperCase() === 'FN1X2' ||
-    o.oddGroup?.toUpperCase().includes('1X2')
-  );
-  console.log(`[sibet90] 1X2 quote: ${oneX2.length}`);
-  
-  const homeOdd = oneX2.find((o) => o.oddName === '1')?.rank ?? oneX2.find((o) => o.oddName?.toUpperCase().startsWith('1'))?.rank ?? 0;
-  const drawOdd = oneX2.find((o) => o.oddName === 'X')?.rank ?? oneX2.find((o) => o.oddName?.toUpperCase().includes('X'))?.rank ?? 0;
-  const awayOdd = oneX2.find((o) => o.oddName === '2')?.rank ?? oneX2.find((o) => o.oddName?.toUpperCase().startsWith('2'))?.rank ?? 0;
-
-  if (discipline === 1 && homeOdd > 1 && awayOdd > 1) {
-    const outcomes = [{ name: home, price: homeOdd }];
-    if (drawOdd > 1) outcomes.push({ name: 'Draw', price: drawOdd });
-    outcomes.push({ name: away, price: awayOdd });
-    markets.push({ key: 'h2h', outcomes });
-  } else if (homeOdd > 1 && awayOdd > 1) {
-    markets.push({
-      key: 'h2h',
-      outcomes: [
-        { name: home, price: homeOdd },
-        { name: away, price: awayOdd },
-      ],
-    });
+  // Group odds by oddGroup
+  const groupMap = new Map<string, SibetPrematchOdd[]>();
+  for (const odd of active) {
+    const group = odd.oddGroup || 'default';
+    if (!groupMap.has(group)) groupMap.set(group, []);
+    groupMap.get(group)!.push(odd);
   }
 
-  // Double Chance
-  const dc1x = oneX2.find((o) => o.oddName === 'DC1X')?.rank ?? 0;
-  const dc12 = oneX2.find((o) => o.oddName === 'DC12')?.rank ?? 0;
-  const dcx2 = oneX2.find((o) => o.oddName === 'DCX2')?.rank ?? 0;
-  const dcOutcomes: { name: string; price: number }[] = [];
-  if (dc1x > 1) dcOutcomes.push({ name: '1X', price: dc1x });
-  if (dc12 > 1) dcOutcomes.push({ name: '12', price: dc12 });
-  if (dcx2 > 1) dcOutcomes.push({ name: 'X2', price: dcx2 });
-  if (dcOutcomes.length >= 2) {
-    markets.push({ key: 'double_chance', outcomes: dcOutcomes });
-  }
+  for (const [group, groupOdds] of groupMap) {
+    const groupUpper = group.toUpperCase();
 
-  // BTTS (GG/NG)
-  const ggYes = active.find((o) => o.oddGroup === 'GG' && (o.oddName === 'GGS' || o.oddName === 'Yes'))?.rank ?? 0;
-  const ggNo = active.find((o) => o.oddGroup === 'GG' && (o.oddName === 'GGN' || o.oddName === 'No'))?.rank ?? 0;
-  if (ggYes > 1 && ggNo > 1) {
-    markets.push({
-      key: 'btts',
-      outcomes: [
-        { name: 'GG', price: ggYes },
-        { name: 'NG', price: ggNo },
-      ],
-    });
-  }
+    // 1X2 (h2h)
+    if (groupUpper === '1X2' || groupUpper === 'FN1X2' || groupUpper.includes('1X2')) {
+      if (!addedGroupKeys.has('h2h')) {
+        const hOut = groupOdds.find(o => o.oddName === '1')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().startsWith('1'))?.rank ?? 0;
+        const dOut = groupOdds.find(o => o.oddName === 'X')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().includes('X'))?.rank ?? 0;
+        const aOut = groupOdds.find(o => o.oddName === '2')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().startsWith('2'))?.rank ?? 0;
 
-  // Under/Over 2.5
-  const uo25 = active.filter((o) => o.oddGroup?.startsWith('Under Over 2.5') || o.oddGroup?.startsWith('UNDER_OVER_2'));
-  const over25 = uo25.find((o) => o.oddName === 'Over' || o.oddName?.includes('OVER'))?.rank ?? 0;
-  const under25 = uo25.find((o) => o.oddName === 'Under' || o.oddName?.includes('UNDER'))?.rank ?? 0;
-  if (over25 > 1 && under25 > 1) {
-    markets.push({
-      key: 'totals',
-      outcomes: [
-        { name: 'Over', price: over25, point: 2.5 },
-        { name: 'Under', price: under25, point: 2.5 },
-      ],
-    });
+        if (hOut > 1 && aOut > 1) {
+          const outcomes: any[] = [{ name: home, price: hOut }];
+          if (discipline === 1 && dOut > 1) outcomes.push({ name: 'Draw', price: dOut });
+          outcomes.push({ name: away, price: aOut });
+          markets.push({ key: 'h2h', outcomes });
+          addedGroupKeys.add('h2h');
+        }
+
+        // Also check for double chance here if present
+        const dcOutcomes: any[] = [];
+        const dc1x = groupOdds.find(o => o.oddName === 'DC1X')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().includes('1X'))?.rank ?? 0;
+        const dc12 = groupOdds.find(o => o.oddName === 'DC12')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().includes('12'))?.rank ?? 0;
+        const dcx2 = groupOdds.find(o => o.oddName === 'DCX2')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().includes('X2'))?.rank ?? 0;
+        if (dc1x > 1) dcOutcomes.push({ name: '1X', price: dc1x });
+        if (dc12 > 1) dcOutcomes.push({ name: '12', price: dc12 });
+        if (dcx2 > 1) dcOutcomes.push({ name: 'X2', price: dcx2 });
+        if (dcOutcomes.length >= 2) {
+          markets.push({ key: 'double_chance', outcomes: dcOutcomes });
+          addedGroupKeys.add('double_chance');
+        }
+      }
+    }
+
+    // GG/NG (BTTS)
+    else if (groupUpper === 'GG' || groupUpper.includes('BTTS') || groupUpper.includes('GOALS')) {
+      if (!addedGroupKeys.has('btts')) {
+        const yesOdd = groupOdds.find(o => o.oddName === 'GGS' || o.oddName === 'Yes' || o.oddName?.toUpperCase().includes('GG'))?.rank ?? 0;
+        const noOdd = groupOdds.find(o => o.oddName === 'GGN' || o.oddName === 'No' || o.oddName?.toUpperCase().includes('NG'))?.rank ?? 0;
+        if (yesOdd > 1 && noOdd > 1) {
+          markets.push({
+            key: 'btts',
+            outcomes: [
+              { name: 'GG', price: yesOdd },
+              { name: 'NG', price: noOdd }
+            ]
+          });
+          addedGroupKeys.add('btts');
+        }
+      }
+    }
+
+    // Under/Over (Totals)
+    else if (groupUpper.startsWith('UNDER OVER') || groupUpper.startsWith('UO') || groupUpper.startsWith('TOTALS')) {
+      // Try to extract point from group name or odd names
+      let point = 2.5;
+      const pointMatch = group.match(/(\d+(\.\d+)?)/);
+      if (pointMatch) point = parseFloat(pointMatch[1]);
+      
+      const over = groupOdds.find(o => o.oddName?.toUpperCase().includes('OVER'))?.rank ?? 0;
+      const under = groupOdds.find(o => o.oddName?.toUpperCase().includes('UNDER'))?.rank ?? 0;
+      
+      if (over > 1 && under > 1) {
+        let key = 'totals';
+        if (point === 0.5) key = 'totals_05';
+        else if (point === 1.5) key = 'totals_15';
+        else if (point === 3.5) key = 'totals_35';
+        else if (point === 4.5) key = 'totals_45';
+        else if (point === 5.5) key = 'totals_55';
+
+        markets.push({
+          key,
+          outcomes: [
+            { name: 'Over', price: over, point },
+            { name: 'Under', price: under, point }
+          ]
+        });
+        addedGroupKeys.add(key);
+      }
+    }
+
+    // First half 1X2
+    else if (groupUpper.includes('PRIMO TEMPO') || groupUpper.includes('HT') || groupUpper.includes('1T')) {
+      if (!addedGroupKeys.has('h2h_h1')) {
+        const hOut = groupOdds.find(o => o.oddName === '1')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().startsWith('1'))?.rank ?? 0;
+        const dOut = groupOdds.find(o => o.oddName === 'X')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().includes('X'))?.rank ?? 0;
+        const aOut = groupOdds.find(o => o.oddName === '2')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().startsWith('2'))?.rank ?? 0;
+        if (hOut > 1 && aOut > 1) {
+          const outcomes: any[] = [{ name: home, price: hOut }];
+          if (discipline === 1 && dOut > 1) outcomes.push({ name: 'Draw', price: dOut });
+          outcomes.push({ name: away, price: aOut });
+          markets.push({ key: 'h2h_h1', outcomes });
+          addedGroupKeys.add('h2h_h1');
+        }
+      }
+    }
+
+    // Second half 1X2
+    else if (groupUpper.includes('SECONDO TEMPO') || groupUpper.includes('2T')) {
+      if (!addedGroupKeys.has('h2h_h2')) {
+        const hOut = groupOdds.find(o => o.oddName === '1')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().startsWith('1'))?.rank ?? 0;
+        const dOut = groupOdds.find(o => o.oddName === 'X')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().includes('X'))?.rank ?? 0;
+        const aOut = groupOdds.find(o => o.oddName === '2')?.rank ?? groupOdds.find(o => o.oddName?.toUpperCase().startsWith('2'))?.rank ?? 0;
+        if (hOut > 1 && aOut > 1) {
+          const outcomes: any[] = [{ name: home, price: hOut }];
+          if (discipline === 1 && dOut > 1) outcomes.push({ name: 'Draw', price: dOut });
+          outcomes.push({ name: away, price: aOut });
+          markets.push({ key: 'h2h_h2', outcomes });
+          addedGroupKeys.add('h2h_h2');
+        }
+      }
+    }
+
+    // Draw No Bet
+    else if (groupUpper.includes('DNB') || groupUpper.includes('DRAW NO BET')) {
+      if (!addedGroupKeys.has('dnb')) {
+        const hOut = groupOdds.find(o => o.oddName === '1')?.rank ?? 0;
+        const aOut = groupOdds.find(o => o.oddName === '2')?.rank ?? 0;
+        if (hOut > 1 && aOut > 1) {
+          markets.push({
+            key: 'dnb',
+            outcomes: [
+              { name: home, price: hOut },
+              { name: away, price: aOut }
+            ]
+          });
+          addedGroupKeys.add('dnb');
+        }
+      }
+    }
+
+    // Correct Score
+    else if (groupUpper.includes('CORRECT SCORE') || groupUpper.includes('RISULTATO ESATTO')) {
+      if (!addedGroupKeys.has('correct_score')) {
+        const outcomes = groupOdds.map(o => ({ name: o.oddName, price: o.rank }));
+        if (outcomes.length > 0) {
+          markets.push({ key: 'correct_score', outcomes });
+          addedGroupKeys.add('correct_score');
+        }
+      }
+    }
+
+    // Odd/Even
+    else if (groupUpper.includes('PARI DISPARI') || groupUpper.includes('ODD EVEN')) {
+      if (!addedGroupKeys.has('odd_even')) {
+        const odd = groupOdds.find(o => o.oddName?.toUpperCase().includes('DISPARI') || o.oddName?.toUpperCase().includes('ODD'))?.rank ?? 0;
+        const even = groupOdds.find(o => o.oddName?.toUpperCase().includes('PARI') || o.oddName?.toUpperCase().includes('EVEN'))?.rank ?? 0;
+        if (odd > 1 && even > 1) {
+          markets.push({
+            key: 'odd_even',
+            outcomes: [
+              { name: 'Pari', price: even },
+              { name: 'Dispari', price: odd }
+            ]
+          });
+          addedGroupKeys.add('odd_even');
+        }
+      }
+    }
+
+    // Tennis h2h
+    else if ((discipline === 4 || discipline === 5) && !addedGroupKeys.has('tennis_h2h')) {
+      const hOut = groupOdds.find(o => o.oddName === '1')?.rank ?? 0;
+      const aOut = groupOdds.find(o => o.oddName === '2')?.rank ?? 0;
+      if (hOut > 1 && aOut > 1) {
+        markets.push({
+          key: 'tennis_h2h',
+          outcomes: [
+            { name: home, price: hOut },
+            { name: away, price: aOut }
+          ]
+        });
+        addedGroupKeys.add('tennis_h2h');
+      }
+    }
+
+    // For other groups, just add all odds with group as key
+    else if (!addedGroupKeys.has(group)) {
+      const outcomes = groupOdds.map(o => ({ name: o.oddName, price: o.rank }));
+      if (outcomes.length > 0) {
+        markets.push({ key: group, name: group, outcomes });
+        addedGroupKeys.add(group);
+      }
+    }
   }
 
   return markets;
@@ -622,8 +750,22 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
                 ? [{ key: 'sibet90', title: 'Sibet90', markets }]
                 : [];
 
-              const nation = group.name || 'Internazionale';
-              const leagueName = championship._name || championship.name;
+              let nation = (group.name || '').trim();
+          let leagueName = (championship._name || championship.name || '').trim();
+          
+          // Clean up "Internazionale"
+          if (nation.toLowerCase().includes('internazionale')) nation = 'Internazionale';
+          
+          // Clean up league name - remove redundant nation prefix if present
+          if (leagueName.toLowerCase().startsWith(nation.toLowerCase() + ' - ')) {
+            leagueName = leagueName.slice(nation.length + 3).trim();
+          } else if (leagueName.toLowerCase().includes(' - ')) {
+            const parts = leagueName.split(' - ');
+            // If first part is same as nation, remove it
+            if (parts[0].trim().toLowerCase() === nation.toLowerCase()) {
+              leagueName = parts.slice(1).join(' - ').trim();
+            }
+          }
 
               const event: BetStackEvent = {
                 id: `sb_prematch_${rawEvent.id_evento}`,
@@ -631,7 +773,7 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
                 away: { name: away },
                 time: parseTimestamp(rawEvent.dataora),
                 sport_category: DISCIPLINE_SPORTS[discipline] ?? 'soccer',
-                league: { name: `${nation} — ${leagueName}` },
+                league: { name: leagueName },
                 bookmakers,
                 live: false,
               };
