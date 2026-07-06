@@ -469,13 +469,20 @@ function buildPrematchMarkets(
   if (!odds?.length) return [];
 
   const active = odds.filter((o) => o.enabled === 1 && o.rank > 1);
+  console.log(`[sibet90] buildMarkets: ${odds.length} quote totali, ${active.length} attive`);
   const markets: OddsApiMarket[] = [];
 
-  // 1X2
-  const oneX2 = active.filter((o) => o.oddGroup === '1X2' || o.oddGroup === 'FN1X2');
-  const homeOdd = oneX2.find((o) => o.oddName === '1')?.rank ?? 0;
-  const drawOdd = oneX2.find((o) => o.oddName === 'X')?.rank ?? 0;
-  const awayOdd = oneX2.find((o) => o.oddName === '2')?.rank ?? 0;
+  // 1X2 - try multiple group names
+  const oneX2 = active.filter((o) => 
+    o.oddGroup?.toUpperCase() === '1X2' || 
+    o.oddGroup?.toUpperCase() === 'FN1X2' ||
+    o.oddGroup?.toUpperCase().includes('1X2')
+  );
+  console.log(`[sibet90] 1X2 quote: ${oneX2.length}`);
+  
+  const homeOdd = oneX2.find((o) => o.oddName === '1')?.rank ?? oneX2.find((o) => o.oddName?.toUpperCase().startsWith('1'))?.rank ?? 0;
+  const drawOdd = oneX2.find((o) => o.oddName === 'X')?.rank ?? oneX2.find((o) => o.oddName?.toUpperCase().includes('X'))?.rank ?? 0;
+  const awayOdd = oneX2.find((o) => o.oddName === '2')?.rank ?? oneX2.find((o) => o.oddName?.toUpperCase().startsWith('2'))?.rank ?? 0;
 
   if (discipline === 1 && homeOdd > 1 && awayOdd > 1) {
     const outcomes = [{ name: home, price: homeOdd }];
@@ -567,6 +574,7 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
 
   for (const discipline of disciplines) {
     try {
+      console.log(`[sibet90] Carico disciplina ${discipline}...`);
       const response = await sibetAjax<{
         championshipGroups: SibetPrematchChampionshipGroup[];
       }>({
@@ -580,11 +588,14 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
       }
 
       const championshipGroups = response.result?.championshipGroups ?? [];
+      console.log(`[sibet90] Disciplina ${discipline}: ${championshipGroups.length} gruppi`);
 
       for (const group of championshipGroups) {
+        console.log(`[sibet90] Gruppo: ${group.name} (${group.championships.length} campionati)`);
         for (const championship of group.championships) {
           try {
             // Fetch events for this championship
+            console.log(`[sibet90] Carico campionato ${championship.idchampionship}: ${championship._name}`);
             const eventsResponse = await sibetAjax<{
               events?: { result?: any[] };
               odds?: Record<string, SibetPrematchOdd[]>;
@@ -595,12 +606,13 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
             });
 
             if (eventsResponse.errorCode !== 'success') {
-              console.warn(`[sibet90] events campionato ${championship.idchampionship} fallito`);
+              console.warn(`[sibet90] events campionato ${championship.idchampionship} fallito: ${eventsResponse.errorCode}`);
               continue;
             }
 
             const rawEvents = eventsResponse.result?.events?.result ?? [];
             const oddsMap = eventsResponse.result?.odds ?? {};
+            console.log(`[sibet90] Campionato ${championship.idchampionship}: ${rawEvents.length} eventi, ${Object.keys(oddsMap).length} quote`);
 
             for (const rawEvent of rawEvents) {
               const { home, away } = parseTeams(rawEvent.descrizione);
@@ -641,7 +653,7 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
   }
 
   const events = Array.from(allById.values());
-  console.log(`[sibet90] prematch: ${events.length} eventi`);
+  console.log(`[sibet90] prematch: ${events.length} eventi totali`);
   return events;
 }
 

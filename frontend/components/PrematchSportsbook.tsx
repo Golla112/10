@@ -10,7 +10,6 @@ import {
 } from '../lib/api';
 import { useBetSlipStore } from '../lib/betSlipStore';
 import InlineBetSlip from './InlineBetSlip';
-import BannerCarousel from './BannerCarousel';
 import LiveCalendar from './LiveCalendar';
 import OddsFilterBar from './OddsFilterBar';
 import PrematchEventList, { type PrematchListEvent } from './PrematchEventList';
@@ -62,8 +61,8 @@ export default function PrematchSportsbook({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSport, setSelectedSport] = useState<SportCategory | null>(null);
+  const [selectedNation, setSelectedNation] = useState<string | null>(null);
   const [selectedLeague, setSelectedLeague] = useState<Championship | null>(null);
-  const [viewAllLeagues, setViewAllLeagues] = useState(true);
   const [leagueSearch, setLeagueSearch] = useState('');
   const [matchSearch, setMatchSearch] = useState('');
   const [todayOnly, setTodayOnly] = useState(false);
@@ -102,8 +101,8 @@ export default function PrematchSportsbook({
     );
     if (match) {
       setSelectedSport(match.sport as SportCategory);
+      setSelectedNation(match.nation);
       setSelectedLeague(match);
-      setViewAllLeagues(false);
     }
   }, [championships, forceNationSlug, forceLeagueSlug]);
 
@@ -121,12 +120,16 @@ export default function PrematchSportsbook({
         setLoading(true);
         setError(null);
 
-        if (viewAllLeagues || !selectedLeague) {
-          const { events: sportEvents, meta } = await fetchSportEvents(selectedSport!);
-          if (disposed) return;
-          setEvents(sportEvents as PrematchListEvent[]);
-          setListMeta(meta);
+        if (!selectedNation) {
+          // Mostra solo nazioni
+          setEvents([]);
+          setListMeta({ events: 0, leagues: leaguesForNation.length });
+        } else if (!selectedLeague) {
+          // Mostra solo leghe della nazione
+          setEvents([]);
+          setListMeta({ events: 0, leagues: leaguesForSelectedNation.length });
         } else {
+          // Carica partite della lega
           const data = (await fetchLeagueEvents(
             selectedLeague!.id,
             selectedLeague!.discipline
@@ -152,7 +155,7 @@ export default function PrematchSportsbook({
     return () => {
       disposed = true;
     };
-  }, [selectedSport, selectedLeague, viewAllLeagues]);
+  }, [selectedSport, selectedNation, selectedLeague]);
 
   const leaguesForSport = useMemo(() => {
     if (!selectedSport) return [];
@@ -168,6 +171,23 @@ export default function PrematchSportsbook({
       )
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [championships, selectedSport, leagueSearch]);
+
+  const nationsForSport = useMemo(() => {
+    if (!selectedSport) return [];
+    const nations = new Set<string>();
+    leaguesForSport.forEach((c) => nations.add(c.nation));
+    return Array.from(nations).sort();
+  }, [leaguesForSport]);
+
+  const leaguesForSelectedNation = useMemo(() => {
+    if (!selectedSport || !selectedNation) return [];
+    return leaguesForSport.filter((c) => c.nation === selectedNation);
+  }, [leaguesForSport, selectedSport, selectedNation]);
+
+  const leaguesForNation = useMemo(() => {
+    if (!selectedSport) return [];
+    return leaguesForSport;
+  }, [leaguesForSport, selectedSport]);
 
   const marketFilters = useMemo(
     () => (selectedSport ? getMarketFiltersForSport(selectedSport) : []),
@@ -238,26 +258,38 @@ export default function PrematchSportsbook({
     );
   }
 
-  const showEvents = !!selectedSport;
-  const headerLabel = viewAllLeagues || !selectedLeague
+  const showEvents = !!selectedSport && !!selectedLeague;
+  const headerLabel = selectedLeague
+    ? selectedLeague.label
+    : selectedNation
+    ? selectedNation
+    : selectedSport
     ? `Tutti — ${SPORTS.find((s) => s.id === selectedSport)?.label ?? ''}`
-    : selectedLeague.label;
+    : '';
 
   function selectSport(sport: SportCategory) {
     setSelectedSport(sport);
+    setSelectedNation(null);
     setSelectedLeague(null);
-    setViewAllLeagues(true);
     setLeagueSearch('');
   }
 
-  function selectAllLeagues() {
+  function selectNation(nation: string) {
+    setSelectedNation(nation);
     setSelectedLeague(null);
-    setViewAllLeagues(true);
   }
 
   function selectLeague(league: Championship) {
     setSelectedLeague(league);
-    setViewAllLeagues(false);
+  }
+
+  function goBackToNations() {
+    setSelectedNation(null);
+    setSelectedLeague(null);
+  }
+
+  function goBackToLeagues() {
+    setSelectedLeague(null);
   }
 
   function sportEventCount(sport: SportCategory) {
@@ -282,31 +314,46 @@ export default function PrematchSportsbook({
         </div>
 
         <div className='sb-panel sb-nations-panel sb-rail-block'>
-          <div className='sb-rail-title'>
-            Campionati {selectedSport ? `(${leaguesForSport.length})` : ''}
-          </div>
           {!selectedSport && <div className='sb-rail-hint'>Seleziona uno sport</div>}
-          {selectedSport && (
+          {selectedSport && !selectedNation && !selectedLeague && (
             <>
+              <div className='sb-rail-title'>
+                Nazioni ({nationsForSport.length})
+              </div>
+              <div className='sb-nations-scroll'>
+                {nationsForSport.map((nation) => (
+                  <button
+                    key={nation}
+                    type='button'
+                    className='sb-filter-btn'
+                    onClick={() => selectNation(nation)}
+                  >
+                    {nation}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {selectedSport && selectedNation && !selectedLeague && (
+            <>
+              <div className='sb-rail-title flex justify-between items-center'>
+                <button onClick={goBackToNations} className='sb-filter-btn text-xs p-1'>
+                  ← Nazioni
+                </button>
+                Leghe ({leaguesForSelectedNation.length})
+              </div>
               <input
                 value={leagueSearch}
                 onChange={(e) => setLeagueSearch(e.target.value)}
-                placeholder='Cerca...'
+                placeholder='Cerca lega...'
                 className='betslip-input sb-rail-search'
               />
               <div className='sb-nations-scroll'>
-                <button
-                  type='button'
-                  className={`sb-filter-btn ${viewAllLeagues ? 'active' : ''}`}
-                  onClick={selectAllLeagues}
-                >
-                  Tutti i campionati
-                </button>
-                {leaguesForSport.map((league) => (
+                {leaguesForSelectedNation.map((league) => (
                   <button
                     key={league.id}
                     type='button'
-                    className={`sb-filter-btn ${!viewAllLeagues && selectedLeague?.id === league.id ? 'active' : ''}`}
+                    className='sb-filter-btn'
                     onClick={() => selectLeague(league)}
                   >
                     {league.label}
@@ -315,12 +362,20 @@ export default function PrematchSportsbook({
               </div>
             </>
           )}
+          {selectedSport && selectedLeague && (
+            <>
+              <div className='sb-rail-title flex justify-between items-center'>
+                <button onClick={goBackToLeagues} className='sb-filter-btn text-xs p-1'>
+                  ← Leghe
+                </button>
+                {selectedLeague.label}
+              </div>
+            </>
+          )}
         </div>
       </aside>
 
       <section className='sb-content'>
-        <BannerCarousel />
-
         <div className='sb-toolbar sb-panel'>
           <div className='sb-toolbar-main'>
             <h1>Prematch</h1>
