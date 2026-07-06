@@ -10,13 +10,13 @@ import {
   outcomeSelectionKey,
 } from '../lib/oddsUtils';
 
-type Props = {
-  event: SportsbookEvent;
+type Props<E extends SportsbookEvent = SportsbookEvent> = {
+  event: E;
   selectedMarket: string;
   sport?: string;
   isSelected: (eventId: string, market: string, outcome: string) => boolean;
   onToggle: (
-    event: SportsbookEvent,
+    event: E,
     market: string,
     outcome: string,
     odd: number,
@@ -25,14 +25,14 @@ type Props = {
   compact?: boolean;
 };
 
-export default function EventOddsButtons({
+export default function EventOddsButtons<E extends SportsbookEvent>({
   event,
   selectedMarket,
   sport,
   isSelected,
   onToggle,
   compact = false,
-}: Props) {
+}: Props<E>) {
   const twoWay = isTwoWayWinnerMarket(selectedMarket);
   const isWinner =
     selectedMarket === 'h2h' ||

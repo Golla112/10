@@ -4,21 +4,11 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { VirtualList } from './VirtualList';
 import EventOddsButtons from './EventOddsButtons';
-import type { SportCategory } from '../lib/oddsUtils';
+import type { SportCategory, SportsbookEvent } from '../lib/oddsUtils';
 
-export type PrematchListEvent = {
-  id: string;
-  home: { name: string };
-  away: { name: string };
+export type PrematchListEvent = SportsbookEvent & {
   time: number;
   league?: { name?: string };
-  bookmakers?: Array<{
-    markets?: Array<{
-      key?: string;
-      name?: string;
-      outcomes?: Array<{ name: string; price: number; betcode?: string }>;
-    }>;
-  }>;
 };
 
 type Props = {
