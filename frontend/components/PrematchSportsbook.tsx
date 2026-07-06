@@ -70,6 +70,47 @@ export default function PrematchSportsbook({
 
   const { selections, addSelection, removeSelection } = useBetSlipStore();
 
+  // All useMemo hooks first, then useEffects
+  const leaguesForSport = useMemo(() => {
+    if (!selectedSport) return [];
+    const q = leagueSearch.trim().toLowerCase();
+    return championships
+      .filter((c) => c.sport === selectedSport)
+      .filter(
+        (c) =>
+          !q ||
+          c.label.toLowerCase().includes(q) ||
+          c.nation.toLowerCase().includes(q) ||
+          c.name.toLowerCase().includes(q)
+      )
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [championships, selectedSport, leagueSearch]);
+
+  const nationsForSport = useMemo(() => {
+    if (!selectedSport) return [];
+    const nations = new Set<string>();
+    leaguesForSport.forEach((c) => nations.add(c.nation));
+    return Array.from(nations).sort();
+  }, [leaguesForSport, selectedSport]);
+
+  const leaguesForSelectedNation = useMemo(() => {
+    if (!selectedSport || !selectedNation) return [];
+    return leaguesForSport.filter((c) => c.nation === selectedNation);
+  }, [leaguesForSport, selectedSport, selectedNation]);
+
+  const marketFilters = useMemo(
+    () => (selectedSport ? getMarketFiltersForSport(selectedSport) : []),
+    [selectedSport]
+  );
+
+  const marketCounts = useMemo(() => {
+    const counts: Partial<Record<string, number>> = {};
+    for (const m of marketFilters) {
+      counts[m.id] = countEventsWithMarket(events, m.id);
+    }
+    return counts;
+  }, [events, marketFilters]);
+
   useEffect(() => {
     let disposed = false;
     async function loadMeta() {
@@ -158,51 +199,9 @@ export default function PrematchSportsbook({
     selectedSport, 
     selectedNation, 
     selectedLeague, 
-    nationsForSport, 
-    leaguesForSelectedNation, 
-    fetchLeagueEvents, 
-    defaultMarketForSport
+    nationsForSport.length, 
+    leaguesForSelectedNation.length
   ]);
-
-  const leaguesForSport = useMemo(() => {
-    if (!selectedSport) return [];
-    const q = leagueSearch.trim().toLowerCase();
-    return championships
-      .filter((c) => c.sport === selectedSport)
-      .filter(
-        (c) =>
-          !q ||
-          c.label.toLowerCase().includes(q) ||
-          c.nation.toLowerCase().includes(q) ||
-          c.name.toLowerCase().includes(q)
-      )
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [championships, selectedSport, leagueSearch]);
-
-  const nationsForSport = useMemo(() => {
-    if (!selectedSport) return [];
-    const nations = new Set<string>();
-    leaguesForSport.forEach((c) => nations.add(c.nation));
-    return Array.from(nations).sort();
-  }, [leaguesForSport, selectedSport]);
-
-  const leaguesForSelectedNation = useMemo(() => {
-    if (!selectedSport || !selectedNation) return [];
-    return leaguesForSport.filter((c) => c.nation === selectedNation);
-  }, [leaguesForSport, selectedSport, selectedNation]);
-
-  const marketFilters = useMemo(
-    () => (selectedSport ? getMarketFiltersForSport(selectedSport) : []),
-    [selectedSport]
-  );
-
-  const marketCounts = useMemo(() => {
-    const counts: Partial<Record<string, number>> = {};
-    for (const m of marketFilters) {
-      counts[m.id] = countEventsWithMarket(events, m.id);
-    }
-    return counts;
-  }, [events, marketFilters]);
 
   useEffect(() => {
     if (!selectedSport) return;
