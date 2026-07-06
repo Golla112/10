@@ -558,7 +558,7 @@ async function sibetAjax<T>(payload: any): Promise<SibetApiResponse<T>> {
     throw new Error(`sibet90 ajax HTTP ${res.status}`);
   }
 
-  return res.json();
+  return (await res.json()) as SibetApiResponse<T>;
 }
 
 export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
