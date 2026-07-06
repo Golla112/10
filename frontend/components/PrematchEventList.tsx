@@ -9,6 +9,7 @@ import type { SportCategory, SportsbookEvent } from '../lib/oddsUtils';
 export type PrematchListEvent = SportsbookEvent & {
   time: number;
   league?: { name?: string };
+  live?: boolean;
 };
 
 type Props = {
