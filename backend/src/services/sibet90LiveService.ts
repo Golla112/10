@@ -703,12 +703,16 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
   for (const discipline of disciplines) {
     try {
       console.log(`[sibet90] Carico disciplina ${discipline}...`);
+      
+      // Step 1: Get championship groups
       const response = await sibetAjax<{
         championshipGroups: SibetPrematchChampionshipGroup[];
       }>({
         action: 'oddsPrint',
         iddiscipline: discipline,
       });
+
+      console.log(`[sibet90] oddsPrint response (disciplina ${discipline}):`, JSON.stringify(response, null, 2));
 
       if (response.errorCode !== 'success') {
         console.warn(`[sibet90] oddsPrint disciplina ${discipline} fallita: ${response.errorCode}`);
@@ -719,11 +723,17 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
       console.log(`[sibet90] Disciplina ${discipline}: ${championshipGroups.length} gruppi`);
 
       for (const group of championshipGroups) {
-        console.log(`[sibet90] Gruppo: ${group.name} (${group.championships.length} campionati)`);
+        console.log(`[sibet90] Gruppo: name="${group.name}", countryCode="${group.country_code}" (${group.championships.length} campionati)`);
+        
+        // Fix group.nation - use country_code or name, but avoid "Internazionale" as only option
+        let nation = group.country_code || group.name || '';
+        if (nation === '_IN') nation = 'Internazionale';
+        
         for (const championship of group.championships) {
           try {
             // Fetch events for this championship
-            console.log(`[sibet90] Carico campionato ${championship.idchampionship}: ${championship._name}`);
+            console.log(`[sibet90] Carico campionato ${championship.idchampionship}: ${championship._name || championship.name}`);
+            
             const eventsResponse = await sibetAjax<{
               events?: { result?: any[] };
               odds?: Record<string, SibetPrematchOdd[]>;
@@ -733,45 +743,67 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
               discipline: String(discipline),
             });
 
+            console.log(`[sibet90] events response for campionato ${championship.idchampionship}:`, JSON.stringify(eventsResponse, null, 2));
+
             if (eventsResponse.errorCode !== 'success') {
               console.warn(`[sibet90] events campionato ${championship.idchampionship} fallito: ${eventsResponse.errorCode}`);
               continue;
             }
 
-            const rawEvents = eventsResponse.result?.events?.result ?? [];
-            const oddsMap = eventsResponse.result?.odds ?? {};
-            console.log(`[sibet90] Campionato ${championship.idchampionship}: ${rawEvents.length} eventi, ${Object.keys(oddsMap).length} quote`);
+            // The events might be directly in result, not result.events.result
+            let rawEvents: any[] = [];
+            let oddsMap: Record<string, SibetPrematchOdd[]> = {};
+            
+            if (eventsResponse.result) {
+              if (Array.isArray(eventsResponse.result)) {
+                rawEvents = eventsResponse.result;
+              } else if (eventsResponse.result.events) {
+                rawEvents = Array.isArray(eventsResponse.result.events) 
+                  ? eventsResponse.result.events 
+                  : (eventsResponse.result.events.result ?? []);
+              }
+              
+              if (eventsResponse.result.odds) {
+                oddsMap = eventsResponse.result.odds;
+              }
+            }
+            
+            console.log(`[sibet90] Campionato ${championship.idchampionship}: ${rawEvents.length} eventi, ${Object.keys(oddsMap).length} quote keys`);
 
             for (const rawEvent of rawEvents) {
-              const { home, away } = parseTeams(rawEvent.descrizione);
-              const eventOdds = oddsMap[String(rawEvent.extCode)] ?? [];
+              console.log(`[sibet90] Raw evento:`, JSON.stringify(rawEvent, null, 2));
+              
+              const { home, away } = parseTeams(rawEvent.descrizione || rawEvent.nome || '');
+              const eventExtCode = String(rawEvent.extCode || rawEvent.ext_code || rawEvent.id);
+              const eventOdds = oddsMap[eventExtCode] ?? [];
+              
+              console.log(`[sibet90] Evento ${home} vs ${away}: ${eventOdds.length} quote (extCode="${eventExtCode}")`);
+              
               const markets = buildPrematchMarkets(eventOdds, home, away, discipline);
+              console.log(`[sibet90] Evento ${home} vs ${away}: ${markets.length} mercati creati`);
+              
               const bookmakers: OddsApiBookmaker[] = markets.length
                 ? [{ key: 'sibet90', title: 'Sibet90', markets }]
                 : [];
 
-              let nation = (group.name || '').trim();
-          let leagueName = (championship._name || championship.name || '').trim();
+              let leagueName = (championship._name || championship.name || '').trim();
           
-          // Clean up "Internazionale"
-          if (nation.toLowerCase().includes('internazionale')) nation = 'Internazionale';
-          
-          // Clean up league name - remove redundant nation prefix if present
-          if (leagueName.toLowerCase().startsWith(nation.toLowerCase() + ' - ')) {
-            leagueName = leagueName.slice(nation.length + 3).trim();
-          } else if (leagueName.toLowerCase().includes(' - ')) {
-            const parts = leagueName.split(' - ');
-            // If first part is same as nation, remove it
-            if (parts[0].trim().toLowerCase() === nation.toLowerCase()) {
-              leagueName = parts.slice(1).join(' - ').trim();
-            }
-          }
+              // Clean up league name - remove redundant nation prefix if present
+              if (leagueName.toLowerCase().startsWith(nation.toLowerCase() + ' - ')) {
+                leagueName = leagueName.slice(nation.length + 3).trim();
+              } else if (leagueName.toLowerCase().includes(' - ')) {
+                const parts = leagueName.split(' - ');
+                // If first part is same as nation, remove it
+                if (parts[0].trim().toLowerCase() === nation.toLowerCase()) {
+                  leagueName = parts.slice(1).join(' - ').trim();
+                }
+              }
 
               const event: BetStackEvent = {
-                id: `sb_prematch_${rawEvent.id_evento}`,
+                id: `sb_prematch_${rawEvent.id_evento || rawEvent.id}`,
                 home: { name: home },
                 away: { name: away },
-                time: parseTimestamp(rawEvent.dataora),
+                time: parseTimestamp(rawEvent.dataora || rawEvent.data || Date.now()),
                 sport_category: DISCIPLINE_SPORTS[discipline] ?? 'soccer',
                 league: { name: leagueName },
                 bookmakers,
@@ -799,6 +831,6 @@ export async function fetchSibet90Prematch(): Promise<BetStackEvent[]> {
   return events;
 }
 
-export { SIBET90_BASE };
+export { SIBET90_BASE, sibetAjax, buildPrematchMarkets };
 
 

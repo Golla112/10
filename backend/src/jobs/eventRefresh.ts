@@ -1,5 +1,6 @@
 import { BetStackEvent } from '../services/betStackService';
-import { fetchSibet90Prematch } from '../services/sibet90LiveService';
+import { fetchSofascorePrematch } from '../services/sofascorePrematchService';
+import { calculateBatchOdds } from '../services/prematchOddsEngine';
 import { getEvents, setEvents, acquireLock, releaseLock } from '../services/cacheService';
 import { invalidateEventsIndex } from '../services/eventsIndexService';
 
@@ -37,20 +38,25 @@ export async function refreshEvents(): Promise<void> {
   try {
     let events: BetStackEvent[] = [];
 
-    // Primary: sibet90.net prematch
+    // Primary: Sofascore prematch
     try {
-      events = await fetchSibet90Prematch();
+      events = await fetchSofascorePrematch();
       if (events.length > 0) {
-        console.log(`[refresh] sibet90: ${events.length} eventi`);
+        console.log(`[refresh] sofascore: ${events.length} eventi (senza quote)`);
+        
+        // Calculate odds for all events
+        console.log('[refresh] Calcolo quote per tutti gli eventi...');
+        events = await calculateBatchOdds(events);
+        console.log(`[refresh] Quote calcolate per ${events.length} eventi`);
       }
     } catch (apiErr) {
-      console.warn('[refresh] sibet90 fallita:', apiErr);
+      console.warn('[refresh] sofascore fallita:', apiErr);
     }
 
     const finalEvents = finalizeEvents(events);
 
     if (finalEvents.length === 0) {
-      console.warn('[refresh] Nessun evento prematch da sibet90, cache invariata');
+      console.warn('[refresh] Nessun evento prematch, cache invariata');
       return;
     }
 
@@ -63,5 +69,3 @@ export async function refreshEvents(): Promise<void> {
     await releaseLock(LOCK_KEY);
   }
 }
-
-
