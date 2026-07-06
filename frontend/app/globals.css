@@ -2160,15 +2160,62 @@ h1, h2, h3, h4, h5, h6 {
 .sb-league-block {
   margin-bottom: 10px;
   overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 .sb-league-header {
-  padding: 8px 12px;
-  background: rgba(0, 225, 255, 0.08);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(24, 194, 139, 0.18), rgba(0, 225, 255, 0.08));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 900;
+  color: #edfff8;
+  letter-spacing: 0.02em;
+}
+
+.sb-league-header a {
+  text-decoration: none;
+  color: inherit;
+  transition: color 0.2s ease;
+}
+
+.sb-league-header a:hover {
+  color: #9ef5db;
+}
+
+.sb-rail-block {
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+}
+
+.sb-filter-btn {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: #bfd3e8;
+  border-radius: 10px;
+  padding: 10px 12px;
   font-size: 11px;
-  font-weight: 800;
-  color: #d5ecff;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sb-filter-btn:hover {
+  background: rgba(24, 194, 139, 0.12);
+  border-color: rgba(24, 194, 139, 0.4);
+  color: #edfff8;
+  transform: translateX(2px);
+}
+
+.sb-filter-btn.active {
+  border-color: rgba(24, 194, 139, 0.6);
+  color: #edfff8;
+  background: linear-gradient(135deg, rgba(24, 194, 139, 0.18), rgba(24, 194, 139, 0.1));
+  box-shadow: 0 2px 10px rgba(24, 194, 139, 0.15);
 }
 
 .sb-row-time {

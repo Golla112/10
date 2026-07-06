@@ -81,7 +81,6 @@ export default function PrematchSportsbook({
         setSportStats(stats);
         if (!forceNationSlug) {
           setSelectedSport('soccer');
-          setViewAllLeagues(true);
         }
         setError(null);
       } catch (e) {
@@ -123,7 +122,7 @@ export default function PrematchSportsbook({
         if (!selectedNation) {
           // Mostra solo nazioni
           setEvents([]);
-          setListMeta({ events: 0, leagues: leaguesForNation.length });
+          setListMeta({ events: 0, leagues: nationsForSport.length });
         } else if (!selectedLeague) {
           // Mostra solo leghe della nazione
           setEvents([]);
@@ -155,7 +154,15 @@ export default function PrematchSportsbook({
     return () => {
       disposed = true;
     };
-  }, [selectedSport, selectedNation, selectedLeague]);
+  }, [
+    selectedSport, 
+    selectedNation, 
+    selectedLeague, 
+    nationsForSport, 
+    leaguesForSelectedNation, 
+    fetchLeagueEvents, 
+    defaultMarketForSport
+  ]);
 
   const leaguesForSport = useMemo(() => {
     if (!selectedSport) return [];
@@ -177,17 +184,12 @@ export default function PrematchSportsbook({
     const nations = new Set<string>();
     leaguesForSport.forEach((c) => nations.add(c.nation));
     return Array.from(nations).sort();
-  }, [leaguesForSport]);
+  }, [leaguesForSport, selectedSport]);
 
   const leaguesForSelectedNation = useMemo(() => {
     if (!selectedSport || !selectedNation) return [];
     return leaguesForSport.filter((c) => c.nation === selectedNation);
   }, [leaguesForSport, selectedSport, selectedNation]);
-
-  const leaguesForNation = useMemo(() => {
-    if (!selectedSport) return [];
-    return leaguesForSport;
-  }, [leaguesForSport, selectedSport]);
 
   const marketFilters = useMemo(
     () => (selectedSport ? getMarketFiltersForSport(selectedSport) : []),
@@ -430,7 +432,7 @@ export default function PrematchSportsbook({
 
         {!loading && showEvents && selectedSport && visibleEvents.length > 0 && (
           <>
-            {selectedLeague && !viewAllLeagues && (
+            {selectedLeague && (
               <div className='sb-panel sb-league-block'>
                 <div className='sb-league-header'>
                   <Link
